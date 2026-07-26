@@ -2,6 +2,8 @@
 
 **A live world briefing that explains what matters, where it is happening, and why it was selected.**
 
+[Open the live world briefing](https://theworldlens.up.railway.app)
+
 Most world-monitoring tools are built like analyst terminals: hundreds of markers, layers, feeds, and controls compete for attention. LENS keeps the useful real-time infrastructure but changes the public experience into an editorial sequence—overview, event story, evidence, score, change over 24 hours, and source.
 
 LENS is an independent open-source project. It is not affiliated with or

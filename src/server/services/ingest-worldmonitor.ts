@@ -36,7 +36,7 @@ function toEvent(observation: Observation, previous: EventCluster | null): Event
     phase: "active",
     measurements: observation.measurements,
     evidenceIds: [`${observation.id}:evidence`],
-    sourceFamilies: ["liveuamap"],
+    sourceFamilies: [observation.sourceFamily],
   };
 }
 

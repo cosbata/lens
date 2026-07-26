@@ -23,6 +23,12 @@ export function decideMerge(
   left: ClusterObservation,
   right: ClusterObservation,
 ): MergeDecision {
+  if (left.provider === right.provider && left.providerSourceId === right.providerSourceId) {
+    return { merge: true, reason: "merge.provider_native_id", similarity: 1 };
+  }
+  if (left.canonicalUrl !== "" && left.canonicalUrl === right.canonicalUrl) {
+    return { merge: true, reason: "merge.canonical_url", similarity: 1 };
+  }
   if (left.eventType !== right.eventType) {
     return { merge: false, reason: "separate.event_type_conflict", similarity: 0 };
   }
@@ -36,12 +42,6 @@ export function decideMerge(
     !right.entities.some((entity) => leftEntities.has(normalize(entity)))
   ) {
     return { merge: false, reason: "separate.entity_conflict", similarity: 0 };
-  }
-  if (left.provider === right.provider && left.providerSourceId === right.providerSourceId) {
-    return { merge: true, reason: "merge.provider_native_id", similarity: 1 };
-  }
-  if (left.canonicalUrl !== "" && left.canonicalUrl === right.canonicalUrl) {
-    return { merge: true, reason: "merge.canonical_url", similarity: 1 };
   }
   if (normalize(left.title) === normalize(right.title)) {
     return { merge: true, reason: "merge.normalized_title", similarity: 1 };

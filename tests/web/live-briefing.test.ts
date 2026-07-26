@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  briefingToActivityEvents,
   briefingToPrimaryEvent,
   briefingToTodayEvents,
   watchBriefing,
@@ -42,6 +43,12 @@ const response: BriefingResponse = {
     }],
   },
 };
+
+it("maps structured activity independently from the editorial watchlist", () => {
+  const activity = structuredClone(response);
+  activity.data.activity = activity.data.events;
+  expect(briefingToActivityEvents(activity).map(({ id }) => id)).toEqual(["live-event"]);
+});
 
 describe("live briefing client", () => {
   it("turns a canonical API event into a complete navigable story", () => {

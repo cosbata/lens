@@ -42,9 +42,22 @@ describe("deterministic clustering", () => {
       providerSourceId: "b",
       title: "Strong earthquake hits Example region",
     };
-    const separate = { ...base, id: "c", locationKey: "JP" };
+    const separate = { ...base, id: "c", providerSourceId: "c", locationKey: "JP" };
 
     expect(clusterObservations([separate, duplicate, base]))
       .toEqual([["a", "b"], ["c"]]);
+  });
+
+  it("keeps provider identity and canonical URLs stable across location revisions", () => {
+    expect(decideMerge(
+      { ...base, locationKey: "1:1", canonicalUrl: "https://example.test/event" },
+      {
+        ...base,
+        id: "b",
+        providerSourceId: "b",
+        locationKey: "2:2",
+        canonicalUrl: "https://example.test/event",
+      },
+    )).toMatchObject({ merge: true, reason: "merge.canonical_url" });
   });
 });

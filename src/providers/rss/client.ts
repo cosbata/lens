@@ -7,6 +7,7 @@ import {
 export interface PreviousFeedState {
   etag?: string;
   lastModified?: string;
+  itemCount?: number;
 }
 
 export interface FeedFetchResult {
@@ -60,16 +61,15 @@ export async function fetchRssFeed(
     now?: Date;
   } = {},
 ): Promise<FeedFetchResult> {
-  const url = new URL(feed.url);
-  if (url.protocol !== "https:") throw new Error("rss_https_required");
-  const headers: Record<string, string> = {
-    accept: "application/rss+xml, application/atom+xml, application/xml, text/xml",
-    "user-agent": "LENS/0.1 (+https://github.com/cosbata/lens)",
-  };
-  if (previous?.etag) headers["if-none-match"] = previous.etag;
-  if (previous?.lastModified) headers["if-modified-since"] = previous.lastModified;
-
   try {
+    const url = new URL(feed.url);
+    if (url.protocol !== "https:") throw new Error("rss_https_required");
+    const headers: Record<string, string> = {
+      accept: "application/rss+xml, application/atom+xml, application/xml, text/xml",
+      "user-agent": "LENS/0.1 (+https://github.com/cosbata/lens)",
+    };
+    if (previous?.etag) headers["if-none-match"] = previous.etag;
+    if (previous?.lastModified) headers["if-modified-since"] = previous.lastModified;
     const response = await fetcher(feed.url, {
       headers,
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -79,6 +79,9 @@ export async function fetchRssFeed(
     }
     if (!response.ok) throw new Error(`rss_http_${response.status}`);
     const parsed = parseRssXml(await limitedText(response), feed, now);
+    if (parsed.parsedTotal > 0 && parsed.items.length === 0 && parsed.droppedInvalid > 0) {
+      throw new Error("rss_no_valid_items");
+    }
     return {
       feed,
       status: "success",

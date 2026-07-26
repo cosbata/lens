@@ -77,13 +77,17 @@ export function Comparison() {
   }, [markers]);
   useEffect(() => {
     if (!playing) return;
+    let previousAt = performance.now();
     const timer = window.setInterval(() => {
+      const currentAt = performance.now();
+      const elapsedSeconds = (currentAt - previousAt) / 1_000;
+      previousAt = currentAt;
       setStep((current) => {
-        const next = Math.min(24, current + speed * 0.05);
+        const next = Math.min(24, current + speed * elapsedSeconds);
         if (next >= 24) setPlaying(false);
         return next;
       });
-    }, 50);
+    }, 100);
     return () => window.clearInterval(timer);
   }, [playing, speed]);
   const timeline = useMemo(() => ({

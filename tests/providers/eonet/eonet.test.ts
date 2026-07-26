@@ -49,4 +49,17 @@ describe("NASA EONET provider", () => {
     });
     store.close();
   });
+
+  it("keeps valid events when another EONET item is unsupported", () => {
+    const response = structuredClone(fixture) as { events: unknown[] };
+    response.events.push({
+      id: "unsupported",
+      title: "Unsupported event",
+      link: "https://example.test/unsupported",
+      categories: [{ id: "unknownCategory" }],
+      geometry: [],
+      sources: [],
+    });
+    expect(normalizeEonetEvents(response, "2026-07-25T10:00:00Z")).toHaveLength(1);
+  });
 });

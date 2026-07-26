@@ -1,17 +1,21 @@
 # LENS live-data integration status
 
-Updated: 2026-07-26
+Updated: 2026-07-27
 
 ## Working now without a paid account
 
 | Source | What LENS receives | Status | Cost |
 | --- | --- | --- | --- |
+| Curated RSS/Atom | Global reporting across ten categories, article images and source links | Live | Free |
 | USGS | Earthquakes, coordinates, magnitude, revision time | Live | Free |
 | NASA EONET | Wildfires, storms, volcanoes and other natural events | Live | Free |
 | Esri public imagery | Satellite-style basemap | Live | No current LENS API key |
 | Local SQLite | Observations, evidence, scores and 24-hour snapshots | Live | Free |
 
 These sources keep the map populated even when WorldMonitor is not configured.
+RSS stories remain behind the editorial selection threshold. USGS and EONET
+also appear through a separately switchable `Observed activity` collection, so
+structured hazards are not discarded just because they are not a lead story.
 
 ## WorldMonitor integration prepared in LENS
 
@@ -27,6 +31,19 @@ WorldMonitor's `importanceScore` is not copied into the LENS ranking. LENS uses
 the upstream alert/threat and distinct-source corroboration as inputs, then
 calculates its own explainable score. A failure in one WorldMonitor endpoint
 does not discard data returned by the other.
+WorldMonitor observations pass through the same shared geography and
+cross-provider reconciliation used by the direct providers.
+
+## Operations
+
+- `npm run live-feed-smoke -- --all` checks all configured public feeds and
+  reports failed feed IDs and error classes.
+- `npm run reindex -- --dry-run` previews stored RSS location changes.
+- `npm run reindex` applies them idempotently and rebuilds the briefing.
+- `/api/v1/providers/health` reports the latest provider and per-feed state.
+- `/api/v1/metrics` reports raw evidence, active canonical events, deduplication,
+  map precision, exact-coordinate collisions, editorial selections, and
+  observed activity.
 
 ## What still requires the account owner
 

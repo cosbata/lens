@@ -1,5 +1,7 @@
-const FEED_URL =
-  "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_hour.geojson";
+const FEED_URLS = [
+  "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_week.geojson",
+  "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson",
+] as const;
 
 type Fetcher = typeof fetch;
 type RecordValue = Record<string, unknown>;
@@ -18,9 +20,24 @@ async function json(fetcher: Fetcher, url: string) {
 }
 
 export async function fetchUsgsEvents(fetcher: Fetcher = fetch) {
-  const feed = record(await json(fetcher, FEED_URL), "feed");
-  if (!Array.isArray(feed.features)) throw new Error("invalid_usgs_response:features");
-  return Promise.all(feed.features.map(async (feature, index) => {
+  const feeds = await Promise.all(FEED_URLS.map((url) => json(fetcher, url)));
+  const features = feeds.flatMap((value, feedIndex) => {
+    const feed = record(value, `feeds.${feedIndex}`);
+    if (!Array.isArray(feed.features)) throw new Error(`invalid_usgs_response:feeds.${feedIndex}.features`);
+    return feed.features;
+  });
+  const seen = new Set<string>();
+  const unique = features.filter((feature, index) => {
+    const item = record(feature, `features.${index}`);
+    const properties = record(item.properties, `features.${index}.properties`);
+    const id = typeof item.id === "string"
+      ? item.id
+      : typeof properties.code === "string" ? properties.code : "";
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  return Promise.all(unique.map(async (feature, index) => {
     const item = record(feature, `features.${index}`);
     const properties = record(item.properties, `features.${index}.properties`);
     if (typeof properties.detail !== "string") {

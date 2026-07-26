@@ -72,6 +72,55 @@ function watchlistDetails(store: LensStore, selectedIds: readonly string[]) {
   });
 }
 
+function activityDetails(store: LensStore) {
+  return store.events().flatMap((event) => {
+    const structured = event.sourceFamilies.some((source) =>
+      source === "usgs" || source.startsWith("eonet:"));
+    if (!structured || !event.geometry || event.phase !== "active") return [];
+    const detail = eventDetail(store, event.id);
+    return detail ? [detail] : [];
+  });
+}
+
+export function operationalMetrics(store: LensStore) {
+  const events = store.events();
+  const active = events.filter(({ phase }) => phase === "active");
+  const evidenceIds = new Set(events.flatMap(({ evidenceIds: ids }) => ids));
+  const precisionCounts = active.reduce<Record<string, number>>((counts, event) => {
+    const precision = String(event.measurements.locationPrecision ?? (
+      event.geometry ? "provider_exact" : "unmapped"
+    ));
+    counts[precision] = (counts[precision] ?? 0) + 1;
+    return counts;
+  }, {});
+  const coordinateCounts = new Map<string, number>();
+  for (const event of active) {
+    if (event.geometry?.type !== "Point") continue;
+    const key = event.geometry.coordinates.join(",");
+    coordinateCounts.set(key, (coordinateCounts.get(key) ?? 0) + 1);
+  }
+  const snapshot = store.latestSnapshot();
+  return {
+    rawArticles: evidenceIds.size,
+    canonicalEvents: active.length,
+    deduplicatedArticles: active.reduce(
+      (count, event) => count + Math.max(0, event.evidenceIds.length - 1),
+      0,
+    ),
+    locations: {
+      mapped: active.filter(({ geometry }) => geometry !== null).length,
+      exact: precisionCounts.provider_exact ?? 0,
+      named: precisionCounts.named_hub ?? 0,
+      approximate: precisionCounts.country_approximate ?? 0,
+      unmapped: precisionCounts.unmapped ?? 0,
+    },
+    exactCoordinateCollisionGroups: [...coordinateCounts.values()]
+      .filter((count) => count > 1).length,
+    selectedEvents: snapshot?.eventIds.length ?? 0,
+    observedActivity: activityDetails(store).length,
+  };
+}
+
 export function registerReadApi(
   server: FastifyInstance,
   store: LensStore,
@@ -91,6 +140,7 @@ export function registerReadApi(
           return detail ? [detail] : [];
         }) ?? [],
         watchlist: watchlistDetails(store, snapshot?.eventIds ?? []),
+        activity: activityDetails(store),
       },
     };
   });
@@ -162,7 +212,15 @@ export function registerReadApi(
     const snapshot = store.latestSnapshot();
     return {
       meta: meta(store, now(), snapshot?.createdAt ?? null),
-      data: latestProviderHealth(store),
+      data: {
+        providers: latestProviderHealth(store),
+        feeds: store.feedStates(),
+      },
     };
   });
+
+  server.get("/api/v1/metrics", async () => ({
+    meta: meta(store, now(), store.latestSnapshot()?.createdAt ?? null),
+    data: operationalMetrics(store),
+  }));
 }

@@ -3,11 +3,13 @@ import { ingestRss } from "../src/server/services/ingest-rss";
 import { LensStore } from "../src/server/store";
 
 const categories = new Set<string>();
-const feeds = RSS_FEEDS.filter(({ categoryHint }) => {
-  if (categories.has(categoryHint)) return false;
-  categories.add(categoryHint);
-  return true;
-});
+const feeds = process.argv.includes("--all")
+  ? RSS_FEEDS
+  : RSS_FEEDS.filter(({ categoryHint }) => {
+      if (categories.has(categoryHint)) return false;
+      categories.add(categoryHint);
+      return true;
+    });
 const store = new LensStore();
 
 try {
@@ -30,6 +32,9 @@ try {
     checkedAt: new Date().toISOString(),
     mode: "bounded_live_observation",
     feeds: { checked: result.feeds, healthy: result.healthy },
+    failedFeeds: store.feedStates()
+      .filter(({ failureCount }) => failureCount > 0)
+      .map(({ feedId, errorClass }) => ({ feedId, errorClass })),
     candidates: result.items,
     canonicalStories: result.stories,
     duplicateCompression: result.items

@@ -35,6 +35,15 @@ const DISEASE_TOPICS = [
   "ebola", "marburg", "mpox", "cholera", "dengue", "measles",
   "polio", "hantavirus", "covid",
 ] as const;
+const INCIDENT_TOPICS: Array<[string, RegExp]> = [
+  ["wildfire", /\b(?:wildfires?|forest fires?|bushfires?)\b/i],
+  ["protest", /\b(?:protests?|demonstrations?|rallies|unrest)\b/i],
+  ["earthquake", /\b(?:earthquakes?|quakes?)\b/i],
+  ["flood", /\b(?:floods?|flooding)\b/i],
+  ["storm", /\b(?:storms?|hurricanes?|typhoons?|cyclones?)\b/i],
+  ["attack", /\b(?:attacks?|airstrikes?|strikes?|bombings?)\b/i],
+  ["outage", /\b(?:outages?|blackouts?|service disruptions?)\b/i],
+];
 const sha256 = async (value: string) =>
   createHash("sha256").update(value).digest("hex");
 const normalizeTitle = (value: string) =>
@@ -55,6 +64,20 @@ const round = (value: number) => Math.round(value * 10) / 10;
 const diseaseTopic = (text: string) => {
   const normalized = text.toLowerCase();
   return DISEASE_TOPICS.find((topic) => normalized.includes(topic));
+};
+const incidentTopic = (text: string) =>
+  diseaseTopic(text)
+  ?? INCIDENT_TOPICS.find(([, pattern]) => pattern.test(text))?.[0];
+const compatibleIncidentLocation = (left: NewsLocation, right: NewsLocation) => {
+  const sharedCountry = left.affectedCountries.some((country) =>
+    right.affectedCountries.includes(country));
+  if (!sharedCountry) return false;
+  if (
+    left.precision === "named_hub"
+    && right.precision === "named_hub"
+    && left.displayName !== right.displayName
+  ) return false;
+  return true;
 };
 const isRoundup = (title: string) => /^(?:world|global) news in brief\b/i.test(title);
 const unmappedLocation = (): NewsLocation => ({
@@ -95,7 +118,9 @@ export async function ingestRss({
       lastCheckedAt: startedAt,
       lastSuccessAt: successful ? startedAt : previous?.lastSuccessAt,
       failureCount: successful ? 0 : (previous?.failureCount ?? 0) + 1,
-      itemCount: result.items.length,
+      itemCount: result.status === "not_modified"
+        ? previous?.itemCount ?? 0
+        : result.items.length,
       errorClass: result.errorClass,
     });
   }
@@ -130,14 +155,33 @@ export async function ingestRss({
     const group = groups.get(canonicalHash);
     if (group) group.push(item);
     else groups.set(canonicalHash, [item]);
-    store.saveStoryAliases(
-      canonicalHash,
-      identity.memberTitleHashes,
-      new Date(checkedAt.getTime() + STORY_ALIAS_TTL_MS).toISOString(),
-    );
   }
 
-  const lexicalGroups = [...groups].map(([canonicalHash, stories]) => {
+  const partitionedGroups = [...groups].flatMap(([canonicalHash, stories]) => {
+    const partitions = new Map<string, typeof stories>();
+    for (const story of stories) {
+      const location = inferNewsLocation(`${story.title} ${story.description}`);
+      const key = location.precision === "named_hub"
+        ? `hub:${location.displayName}`
+        : "broad";
+      const partition = partitions.get(key);
+      if (partition) partition.push(story);
+      else partitions.set(key, [story]);
+    }
+    return [...partitions].map(([key, partition], index) => ({
+      canonicalHash: partitions.size === 1 || index === 0
+        ? canonicalHash
+        : `${canonicalHash}-${shortHash(key)}`,
+      stories: partition,
+    }));
+  });
+
+  const lexicalGroups = partitionedGroups.map(({ canonicalHash, stories }) => {
+    store.saveStoryAliases(
+      canonicalHash,
+      stories.flatMap((story) => identityByItem.get(story)?.memberTitleHashes ?? []),
+      new Date(checkedAt.getTime() + STORY_ALIAS_TTL_MS).toISOString(),
+    );
     const sources = [...new Set(stories.map(({ source }) => source))];
     const ranked = stories.map((story) => {
       const classification = classifyNews(
@@ -173,7 +217,7 @@ export async function ingestRss({
       sources,
       representative,
       location,
-      topic: diseaseTopic(stories.map(({ title, description }) => `${title} ${description}`).join(" ")),
+      topic: incidentTopic(stories.map(({ title, description }) => `${title} ${description}`).join(" ")),
     };
   }).sort((left, right) =>
     right.representative.importance.finalScore - left.representative.importance.finalScore
@@ -185,8 +229,9 @@ export async function ingestRss({
     const existing = item.topic && item.location.affectedCountries.length > 0
       ? prepared.find((candidate) =>
         candidate.topic === item.topic
-        && candidate.location.affectedCountries.some((country) =>
-          item.location.affectedCountries.includes(country))
+        && candidate.representative.classification.primaryCategory
+          === item.representative.classification.primaryCategory
+        && compatibleIncidentLocation(candidate.location, item.location)
         && Math.abs(Date.parse(candidate.representative.story.publishedAt) - occurredAt)
           <= STORY_TOPIC_WINDOW_MS)
       : undefined;

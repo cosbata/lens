@@ -17,6 +17,7 @@
     "start": "tsx src/server/index.ts",
     "serve": "tsx src/server/index.ts",
     "replay": "tsx scripts/replay.ts",
+    "reindex": "tsx scripts/reindex.ts",
     "live-feed-smoke": "tsx scripts/live-feed-smoke.ts",
     "validate:evaluation": "tsx scripts/validate-evaluation.ts",
     "evaluate": "tsx scripts/evaluate.ts",

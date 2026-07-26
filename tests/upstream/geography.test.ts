@@ -21,6 +21,19 @@ describe("honest news geography", () => {
     });
   });
 
+  it("uses a mainland representative point for countries with overseas territory", () => {
+    expect(inferNewsLocation("Wildfires spread across France")).toMatchObject({
+      precision: "country_approximate",
+      affectedCountries: ["FR"],
+      geometry: { type: "Point", coordinates: [2.3522, 48.8566] },
+    });
+    expect(inferNewsLocation("National policy changes across Russia")).toMatchObject({
+      precision: "country_approximate",
+      affectedCountries: ["RU"],
+      geometry: { type: "Point", coordinates: [37.6173, 55.7558] },
+    });
+  });
+
   it("prefers a named subnational place over a country-center fallback", () => {
     expect(inferNewsLocation("Health teams met local officials in Bunia, DR Congo"))
       .toMatchObject({
@@ -49,6 +62,24 @@ describe("honest news geography", () => {
         precision: "unmapped",
         matchedTerms: [],
         referenceVersion: "worldmonitor-d9ef780",
+    });
+  });
+
+  it("does not pick an arbitrary point when several named places are present", () => {
+    expect(inferNewsLocation("Washington DC and Moscow discuss developments in Kyiv"))
+      .toMatchObject({
+        geometry: null,
+        precision: "unmapped",
+        displayName: "Multiple named locations",
+        affectedCountries: ["US", "RU", "UA"],
+      });
+  });
+
+  it("recognizes Türkiye without relying on an ambiguous generated alias", () => {
+    expect(inferNewsLocation("Türkiye announces a national election"))
+      .toMatchObject({
+        precision: "country_approximate",
+        affectedCountries: ["TR"],
       });
   });
 });

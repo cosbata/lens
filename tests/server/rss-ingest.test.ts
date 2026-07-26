@@ -100,12 +100,91 @@ describe("RSS ingestion", () => {
     expect(store.events()).toHaveLength(1);
     expect(store.events()[0]).toMatchObject({
       geometry: { type: "Point", coordinates: [30.252, 1.559] },
+      sourceFamilies: ["WHO", "UN News"],
       measurements: {
         locationPrecision: "named_hub",
         locationDisplayName: "Bunia",
       },
     });
     expect(store.evidenceForObservation(store.observations()[0].id)).toHaveLength(2);
+    store.close();
+  });
+
+  it("merges same-incident reports but keeps different named regions separate", async () => {
+    const store = new LensStore();
+    const feeds = RSS_FEEDS.slice(0, 3);
+    const item = (
+      source: string,
+      sourceId: string,
+      title: string,
+      description: string,
+      publishedAt: string,
+    ) => ({
+      source,
+      sourceId,
+      authority: "established" as const,
+      title,
+      link: `https://example.test/${sourceId}`,
+      publishedAt,
+      description,
+      categoryHint: "climate-environment" as const,
+      language: "en",
+    });
+    await ingestRss({
+      store,
+      feeds,
+      now: () => new Date("2026-07-26T09:00:00Z"),
+      load: async () => [
+        {
+          feed: feeds[0],
+          status: "success",
+          items: [item(
+            "Reuters",
+            "france-1",
+            "Firefighters battle wildfires across France",
+            "France deployed additional aircraft.",
+            "2026-07-26T07:00:00Z",
+          )],
+        },
+        {
+          feed: feeds[1],
+          status: "success",
+          items: [item(
+            "Guardian",
+            "france-2",
+            "France races to contain forest fires",
+            "Emergency crews are tackling the same wildfire emergency.",
+            "2026-07-26T07:30:00Z",
+          )],
+        },
+        {
+          feed: feeds[2],
+          status: "success",
+          items: [
+            item(
+              "WHO",
+              "bunia",
+              "Wildfire response expands near Bunia, DR Congo",
+              "Teams are working around Bunia.",
+              "2026-07-26T08:00:00Z",
+            ),
+            item(
+              "UN News",
+              "kivu",
+              "Wildfire response expands in South Kivu, DR Congo",
+              "Teams are working in South Kivu.",
+              "2026-07-26T08:10:00Z",
+            ),
+          ],
+        },
+      ],
+      loadImage: async () => undefined,
+    });
+
+    const active = store.events().filter(({ phase }) => phase === "active");
+    const france = active.find(({ affectedCountries }) => affectedCountries.includes("FR"));
+    expect(france?.evidenceIds).toHaveLength(2);
+    expect(active.filter(({ affectedCountries }) => affectedCountries.includes("CD"))).toHaveLength(2);
     store.close();
   });
 
@@ -146,6 +225,33 @@ describe("RSS ingestion", () => {
     expect(store.events()[0].phase).toBe("resolved");
     expect(store.events()[0].lastMaterialUpdateAt).toBe("2026-07-01T08:00:00Z");
     expect(store.latestSnapshot()?.eventIds).toEqual([]);
+    store.close();
+  });
+
+  it("preserves the prior feed item count after a 304 response", async () => {
+    const store = new LensStore();
+    const [feed] = RSS_FEEDS;
+    store.saveFeedState({
+      feedId: feed.id,
+      etag: "\"v1\"",
+      lastCheckedAt: "2026-07-26T08:00:00Z",
+      lastSuccessAt: "2026-07-26T08:00:00Z",
+      failureCount: 0,
+      itemCount: 12,
+    });
+    await ingestRss({
+      store,
+      feeds: [feed],
+      now: () => new Date("2026-07-26T09:00:00Z"),
+      load: async () => [{
+        feed,
+        status: "not_modified",
+        etag: "\"v1\"",
+        items: [],
+      }],
+      loadImage: async () => undefined,
+    });
+    expect(store.feedState(feed.id)?.itemCount).toBe(12);
     store.close();
   });
 });

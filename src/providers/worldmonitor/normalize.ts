@@ -6,6 +6,7 @@ import {
   type Evidence,
   type Observation,
 } from "../../core/model";
+import { inferNewsLocation } from "../../upstream/worldmonitor/geography";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -196,6 +197,12 @@ export function normalizeWorldMonitorFeedDigest(
         const primaryCategory = newsCategory(bucketName, optionalText(threat.category, "threat.category"));
         const locationName = optionalText(item.locationName, "locationName");
         const snippet = optionalText(item.snippet, "snippet");
+        const inferredLocation = hasLocation
+          ? null
+          : inferNewsLocation(`${title} ${snippet ?? ""} ${locationName ?? ""}`);
+        const geometry = hasLocation
+          ? { type: "Point" as const, coordinates: [longitude, latitude] as [number, number] }
+          : inferredLocation?.geometry ?? null;
         const id = createHash("sha256")
           .update(`${link}\n${title}\n${publishedAt}`)
           .digest("hex")
@@ -215,11 +222,9 @@ export function normalizeWorldMonitorFeedDigest(
             primaryCategory === "conflict" ? ["security"] :
             primaryCategory === "supply-chains" ? ["economy"] :
             primaryCategory === "energy" ? ["supply-chains"] : [],
-          geometry: hasLocation
-            ? { type: "Point", coordinates: [longitude, latitude] }
-            : null,
-          globalScope: !hasLocation,
-          affectedCountries: [],
+          geometry,
+          globalScope: geometry === null,
+          affectedCountries: inferredLocation?.affectedCountries ?? [],
           measurements: {
             alert: item.isAlert === true,
             corroborationCount: newsNumber(item.corroborationCount) ?? 1,
@@ -227,6 +232,12 @@ export function normalizeWorldMonitorFeedDigest(
             sourceCount: newsNumber((item.storyMeta as JsonRecord | undefined)?.sourceCount) ?? 1,
             threatLevel: optionalText(threat.level, "threat.level") ?? "THREAT_LEVEL_UNSPECIFIED",
             threatConfidence: newsNumber(threat.confidence) ?? null,
+            locationPrecision: hasLocation
+              ? "provider_exact"
+              : inferredLocation?.precision ?? "unmapped",
+            locationDisplayName: locationName
+              ?? inferredLocation?.displayName
+              ?? "Not precisely mapped",
           },
           extension: {
             upstreamBucket: bucketName,

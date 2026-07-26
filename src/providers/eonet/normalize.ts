@@ -50,8 +50,9 @@ export function normalizeEonetEvents(
 ): Array<{ observation: Observation; evidence: Evidence }> {
   const response = record(responseValue, "response");
   if (!Array.isArray(response.events)) throw new Error("invalid_eonet:events");
-  return response.events.map((value, index) => {
-    const event = record(value, `events.${index}`);
+  return response.events.flatMap((value, index) => {
+    try {
+      const event = record(value, `events.${index}`);
     if (!Array.isArray(event.categories) || event.categories.length === 0) {
       throw new Error(`invalid_eonet:events.${index}.categories`);
     }
@@ -109,18 +110,21 @@ export function normalizeEonetEvents(
         closed: event.closed === null || typeof event.closed === "string" ? event.closed : null,
       },
     });
-    return {
-      observation,
-      evidence: parseEvidence({
-        id: `${observation.id}:evidence`,
-        observationId: observation.id,
-        sourceId,
-        sourceFamily: observation.sourceFamily,
-        url: sourceUrl,
-        publishedAt: latest.date,
-        fetchedAt,
-        title,
-      }),
-    };
+      return [{
+        observation,
+        evidence: parseEvidence({
+          id: `${observation.id}:evidence`,
+          observationId: observation.id,
+          sourceId,
+          sourceFamily: observation.sourceFamily,
+          url: sourceUrl,
+          publishedAt: latest.date,
+          fetchedAt,
+          title,
+        }),
+      }];
+    } catch {
+      return [];
+    }
   });
 }

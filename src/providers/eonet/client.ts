@@ -1,5 +1,5 @@
 const EONET_URL =
-  "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&days=30&limit=100";
+  "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&days=30&limit=200";
 
 export async function fetchEonetEvents(fetcher: typeof fetch = fetch) {
   const response = await fetcher(EONET_URL, { headers: { accept: "application/json" } });

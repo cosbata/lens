@@ -10,6 +10,7 @@ import type { LensStore } from "../store";
 import { buildBriefingSnapshot } from "./build-briefing";
 import { persistBriefingSnapshot } from "../store/briefing-snapshots";
 import { publishBriefingUpdate } from "../api/stream";
+import { reconcileEvents } from "./reconcile-events";
 
 type UsgsPayload = Awaited<ReturnType<typeof fetchUsgsEvents>>;
 
@@ -91,6 +92,7 @@ function scoreEvent(event: EventCluster, now: string): EventScore {
 }
 
 export function rebuildBriefing(store: LensStore, now: string) {
+  reconcileEvents(store);
   const scored = store.events().flatMap((event) => {
     if (event.phase === "resolved") return [];
     const score = store.eventScores(event.id)[0];

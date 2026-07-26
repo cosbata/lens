@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "./components/AppShell";
 import { TODAY_EVENTS, type TodayEvent } from "./map/briefing-fixture";
 import {
+  briefingToActivityEvents,
   briefingToPrimaryEvent,
   briefingToTodayEvents,
   watchBriefing,
@@ -26,6 +27,7 @@ function eventIdFromHash(hash: string | null) {
 export function App() {
   const [hash, setHash] = useState(currentHash);
   const [events, setEvents] = useState<readonly TodayEvent[]>(TODAY_EVENTS);
+  const [activityEvents, setActivityEvents] = useState<readonly TodayEvent[]>([]);
   const [primaryEvent, setPrimaryEvent] = useState<TodayEvent>(TODAY_EVENTS[0]);
   const [liveState, setLiveState] = useState<"live" | "polling" | "offline">("polling");
   const needsLiveBriefing = !hash || hash === "#briefing" || hash.startsWith("#event/");
@@ -41,6 +43,7 @@ export function App() {
     return watchBriefing({
       onBriefing: (briefing) => {
         setEvents((current) => briefingToTodayEvents(briefing, current));
+        setActivityEvents(briefingToActivityEvents(briefing));
         setPrimaryEvent((current) => briefingToPrimaryEvent(briefing, current));
       },
       onState: setLiveState,
@@ -49,7 +52,8 @@ export function App() {
 
   const eventId = eventIdFromHash(hash);
   const event = events.find(({ id }) => id === eventId) ??
-    (primaryEvent.id === eventId ? primaryEvent : undefined);
+    (primaryEvent.id === eventId ? primaryEvent : undefined) ??
+    TODAY_EVENTS.find(({ id }) => id === eventId);
   if (event) {
     const storyEvents = events.some(({ id }) => id === primaryEvent.id)
       ? events
@@ -64,7 +68,12 @@ export function App() {
         ? <Methodology />
         : hash === "#categories"
           ? <AllCategories />
-          : <TodayOverview events={events} primaryEvent={primaryEvent} liveState={liveState} />}
+          : <TodayOverview
+              events={events}
+              activityEvents={activityEvents}
+              primaryEvent={primaryEvent}
+              liveState={liveState}
+            />}
     </AppShell>
   );
 }

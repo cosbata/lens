@@ -7,7 +7,7 @@ import {
   TodayOverview,
 } from "../../src/web/screens/TodayOverview";
 import { displayUpdatedAt, MonitorPanel } from "../../src/web/components/MonitorPanel";
-import { eventAppearance } from "../../src/web/map/WorldMap";
+import { clusterDrilldownEvents, eventAppearance } from "../../src/web/map/WorldMap";
 
 describe("today map overview", () => {
   it("renders the curated worldwide watchlist and one primary briefing", () => {
@@ -54,6 +54,84 @@ describe("today map overview", () => {
     expect(eventAppearance({ category: "Disasters", title: "Wildfire COW" }).label).toBe("Wildfire");
     expect(eventAppearance({ category: "Disasters", title: "Typhoon Noul" }).label).toBe("Storm");
     expect(eventAppearance({ category: "Economy", title: "Market shock" }).label).toBe("Economy");
+  });
+
+  it("keeps normal cluster expansion for distinct coordinates", () => {
+    expect(clusterDrilldownEvents([
+      {
+        geometry: { type: "Point", coordinates: [10, 20] },
+        properties: { id: "a", title: "A", category: "Health" },
+      },
+      {
+        geometry: { type: "Point", coordinates: [11, 20] },
+        properties: { id: "b", title: "B", category: "Health" },
+      },
+    ])).toEqual([]);
+  });
+
+  it("keeps expanding a mixed cluster until only the exact collision remains", () => {
+    expect(clusterDrilldownEvents([
+      {
+        geometry: { type: "Point", coordinates: [10, 20] },
+        properties: { id: "a", title: "A", category: "Health" },
+      },
+      {
+        geometry: { type: "Point", coordinates: [10, 20] },
+        properties: { id: "b", title: "B", category: "Health" },
+      },
+      {
+        geometry: { type: "Point", coordinates: [11, 20] },
+        properties: { id: "c", title: "C", category: "Health" },
+      },
+    ])).toEqual([]);
+  });
+
+  it("exposes every same-coordinate cluster leaf for drilldown", () => {
+    expect(clusterDrilldownEvents([
+      {
+        geometry: { type: "Point", coordinates: [10, 20] },
+        properties: {
+          id: "a",
+          title: "A",
+          category: "Health",
+          visualLabel: "Health",
+          color: "#dc7ca3",
+          locationPrecision: "country_approximate",
+          locationDisplayName: "DR Congo",
+        },
+      },
+      {
+        geometry: { type: "Point", coordinates: [10, 20] },
+        properties: {
+          id: "b",
+          title: "B",
+          category: "Health",
+          visualLabel: "Health",
+          color: "#dc7ca3",
+          locationPrecision: "country_approximate",
+          locationDisplayName: "DR Congo",
+        },
+      },
+    ])).toEqual([
+      {
+        id: "a",
+        title: "A",
+        category: "Health",
+        visualLabel: "Health",
+        color: "#dc7ca3",
+        locationPrecision: "country_approximate",
+        locationDisplayName: "DR Congo",
+      },
+      {
+        id: "b",
+        title: "B",
+        category: "Health",
+        visualLabel: "Health",
+        color: "#dc7ca3",
+        locationPrecision: "country_approximate",
+        locationDisplayName: "DR Congo",
+      },
+    ]);
   });
 
   it("shows provenance and score details immediately in the selected-event panel", () => {

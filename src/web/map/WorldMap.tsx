@@ -130,6 +130,8 @@ const eventData = (
         visualKey: appearance.key,
         visualLabel: appearance.label,
         color: appearance.color,
+        locationPrecision: event.locationPrecision ?? "",
+        locationDisplayName: event.locationDisplayName ?? "",
         active: event.id === activeId,
         visible: event.id !== hiddenId,
       },
@@ -147,8 +149,48 @@ const popupContent = (eyebrow: string, title: string) => {
   return content;
 };
 
+export type ClusterDrilldownEvent = {
+  id: string;
+  title: string;
+  category: string;
+  visualLabel: string;
+  color: string;
+  locationPrecision: string;
+  locationDisplayName: string;
+};
+
+type ClusterLeaf = {
+  geometry?: { type?: string; coordinates?: unknown };
+  properties?: Record<string, unknown> | null;
+};
+
+const pointCoordinates = (leaf: ClusterLeaf) => (
+  leaf.geometry?.type === "Point" && Array.isArray(leaf.geometry.coordinates)
+    ? leaf.geometry.coordinates as [number, number]
+    : undefined
+);
+
+export function clusterDrilldownEvents(leaves: readonly ClusterLeaf[]): ClusterDrilldownEvent[] {
+  const coordinates = leaves.map(pointCoordinates).filter((value): value is [number, number] => Boolean(value));
+  if (coordinates.length !== leaves.length) return [];
+  if (new Set(coordinates.map((coordinate) => coordinate.join(","))).size !== 1) return [];
+  return leaves.flatMap(({ properties }) => {
+    if (typeof properties?.id !== "string") return [];
+    return [{
+      id: properties.id,
+      title: String(properties.title ?? ""),
+      category: String(properties.category ?? ""),
+      visualLabel: String(properties.visualLabel ?? properties.category ?? ""),
+      color: String(properties.color ?? "#b8a996"),
+      locationPrecision: String(properties.locationPrecision ?? ""),
+      locationDisplayName: String(properties.locationDisplayName ?? ""),
+    }];
+  });
+}
+
 export function WorldMap({
   events,
+  activityEvents = [],
   activeId,
   onActivate,
   styleUrl,
@@ -159,6 +201,7 @@ export function WorldMap({
   focusActive = true,
 }: {
   events: readonly TodayEvent[];
+  activityEvents?: readonly TodayEvent[];
   activeId: string;
   onActivate: (id: string) => void;
   styleUrl?: string;
@@ -172,14 +215,25 @@ export function WorldMap({
   const mapRef = useRef<MapLibreMap | null>(null);
   const deckRef = useRef<MapboxOverlay | null>(null);
   const cameraKeyRef = useRef<string | null>(null);
+  const suppressNextFocusRef = useRef<string | null>(null);
   const [status, setStatus] = useState<"loading" | "ready">("loading");
   const [basemap, setBasemap] = useState<"satellite" | "boundaries">("satellite");
+  const [drilldown, setDrilldown] = useState<{
+    coordinates: [number, number];
+    events: ClusterDrilldownEvent[];
+    index: number;
+  } | null>(null);
   const mapStyle = styleUrl ?? (basemap === "boundaries" ? BOUNDARIES_STYLE : SATELLITE_STYLE);
+  const allEvents = [
+    ...events,
+    ...activityEvents.filter(({ id }) => !events.some((event) => event.id === id)),
+  ];
 
   useEffect(() => {
     if (!containerRef.current) return;
     setStatus("loading");
-    const initialEvent = events.find(({ id }) => id === activeId) ?? events[0];
+    setDrilldown(null);
+    const initialEvent = allEvents.find(({ id }) => id === activeId) ?? allEvents[0];
     const initialState = temporalMapState(initialEvent, temporalAt ?? farFuture);
     const initialPlayback = tripPlayback(initialEvent.geometryHistory, temporalAt ?? farFuture);
     const map = new maplibregl.Map({
@@ -215,6 +269,50 @@ export function WorldMap({
           "circle-opacity": 0.82,
           "circle-blur": 0.04,
           "circle-radius": ["step", ["get", "point_count"], 17, 10, 21, 25, 25],
+        },
+      });
+      map.addSource("lens-activity", {
+        type: "geojson",
+        data: eventData(activityEvents, activeId, temporalAt ?? farFuture),
+        cluster: true,
+        clusterMaxZoom: 6,
+        clusterRadius: 38,
+        clusterProperties,
+      });
+      map.addLayer({
+        id: "lens-activity-clusters",
+        type: "circle",
+        source: "lens-activity",
+        filter: ["has", "point_count"],
+        paint: {
+          "circle-color": dominantClusterColor,
+          "circle-opacity": 0.48,
+          "circle-blur": 0.12,
+          "circle-radius": ["step", ["get", "point_count"], 13, 10, 17, 25, 21],
+        },
+      });
+      map.addLayer({
+        id: "lens-activity-cluster-count",
+        type: "symbol",
+        source: "lens-activity",
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field": ["get", "point_count_abbreviated"],
+          "text-size": 10,
+          "text-allow-overlap": true,
+        },
+        paint: { "text-color": "#f0ede5" },
+      });
+      map.addLayer({
+        id: "lens-activity-points",
+        type: "circle",
+        source: "lens-activity",
+        filter: ["!", ["has", "point_count"]],
+        paint: {
+          "circle-color": ["get", "color"],
+          "circle-opacity": 0.62,
+          "circle-blur": 0.12,
+          "circle-radius": 5,
         },
       });
       map.addLayer({
@@ -311,9 +409,42 @@ export function WorldMap({
       map.on("mouseenter", "lens-event-points", showEvent);
       map.on("mouseleave", "lens-event-points", hidePopup);
       map.on("click", "lens-event-points", (event) => {
+        setDrilldown(null);
         const id = event.features?.[0]?.properties?.id;
         if (typeof id === "string") onActivate(id);
       });
+      map.on("mouseenter", "lens-activity-points", showEvent);
+      map.on("mouseleave", "lens-activity-points", hidePopup);
+      map.on("click", "lens-activity-points", (event) => {
+        setDrilldown(null);
+        const id = event.features?.[0]?.properties?.id;
+        if (typeof id === "string") onActivate(id);
+      });
+      map.on("click", "lens-activity-clusters", async (event) => {
+        const item = event.features?.[0];
+        if (item?.geometry.type !== "Point") return;
+        const source = map.getSource("lens-activity") as GeoJSONSource;
+        const clusterId = Number(item.properties?.cluster_id);
+        const pointCount = Number(item.properties?.point_count);
+        const leaves = await source.getClusterLeaves(clusterId, pointCount, 0);
+        const eventsHere = clusterDrilldownEvents(leaves);
+        if (eventsHere.length > 0) {
+          setDrilldown({
+            coordinates: item.geometry.coordinates as [number, number],
+            events: eventsHere,
+            index: 0,
+          });
+          return;
+        }
+        map.easeTo({
+          center: item.geometry.coordinates as [number, number],
+          zoom: await source.getClusterExpansionZoom(clusterId),
+        });
+      });
+      map.on("mouseenter", "lens-activity-clusters", () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", "lens-activity-clusters", hidePopup);
       map.on("mouseenter", "lens-event-clusters", async (event) => {
         map.getCanvas().style.cursor = "pointer";
         const item = event.features?.[0];
@@ -344,8 +475,31 @@ export function WorldMap({
         if (item?.geometry.type !== "Point") return;
         const source = map.getSource("lens-events") as GeoJSONSource;
         const clusterId = Number(item.properties?.cluster_id);
+        const pointCount = Number(item.properties?.point_count);
+        const leaves = await source.getClusterLeaves(clusterId, pointCount, 0);
+        const eventsHere = clusterDrilldownEvents(leaves);
+        if (eventsHere.length > 0) {
+          setDrilldown({
+            coordinates: item.geometry.coordinates as [number, number],
+            events: eventsHere,
+            index: 0,
+          });
+          return;
+        }
         const zoom = await source.getClusterExpansionZoom(clusterId);
+        setDrilldown(null);
         map.easeTo({ center: item.geometry.coordinates as [number, number], zoom });
+      });
+      map.on("click", (event) => {
+        const interactive = map.queryRenderedFeatures(event.point, {
+          layers: [
+            "lens-event-clusters",
+            "lens-event-points",
+            "lens-activity-clusters",
+            "lens-activity-points",
+          ],
+        });
+        if (interactive.length === 0) setDrilldown(null);
       });
       const markReady = () => {
         if (!map.isSourceLoaded("lens-events")) return;
@@ -362,10 +516,19 @@ export function WorldMap({
       map.remove();
       mapRef.current = null;
     };
-  }, [events, mapStyle, onActivate]);
+  }, [events, activityEvents, mapStyle, onActivate]);
 
   useEffect(() => {
-    const event = events.find(({ id }) => id === activeId);
+    if (!drilldown) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDrilldown(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [drilldown]);
+
+  useEffect(() => {
+    const event = allEvents.find(({ id }) => id === activeId);
     if (!event || !mapRef.current) return;
     const state = temporalMapState(
       event,
@@ -380,8 +543,17 @@ export function WorldMap({
       temporalAt ?? farFuture,
       playback ? activeId : undefined,
     ));
+    const activitySource = mapRef.current.getSource("lens-activity") as GeoJSONSource | undefined;
+    activitySource?.setData(eventData(activityEvents, activeId, temporalAt ?? farFuture));
     geometrySource?.setData(geometryData(state, playback === null));
-    for (const layerId of ["lens-area", "lens-route", "lens-observed-points"]) {
+    for (const layerId of [
+      "lens-area",
+      "lens-route",
+      "lens-observed-points",
+      "lens-activity-clusters",
+      "lens-activity-cluster-count",
+      "lens-activity-points",
+    ]) {
       if (mapRef.current.getLayer(layerId)) {
         mapRef.current.setLayoutProperty(layerId, "visibility", showActivity ? "visible" : "none");
       }
@@ -431,6 +603,11 @@ export function WorldMap({
     });
 
     const cameraKey = `${activeId}:${focus?.coordinates.join(",") ?? ""}:${focus?.zoom ?? ""}`;
+    if (suppressNextFocusRef.current === activeId) {
+      cameraKeyRef.current = cameraKey;
+      suppressNextFocusRef.current = null;
+      return;
+    }
     if (focusActive && status === "ready" && cameraKeyRef.current !== cameraKey) {
       const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 900;
       const complete = temporalMapState(event, farFuture);
@@ -456,7 +633,17 @@ export function WorldMap({
       }
       cameraKeyRef.current = cameraKey;
     }
-  }, [activeId, events, focus, focusActive, showActivity, showEvents, status, temporalAt]);
+  }, [
+    activeId,
+    events,
+    activityEvents,
+    focus,
+    focusActive,
+    showActivity,
+    showEvents,
+    status,
+    temporalAt,
+  ]);
 
   return (
     <div
@@ -488,7 +675,7 @@ export function WorldMap({
       )}
       <div className="map-legend" aria-label="Event category colours">
         <span>Event type</span>
-        {[...new Map(events.map((event) => {
+        {[...new Map(allEvents.map((event) => {
           const appearance = eventAppearance(event);
           return [appearance.key, appearance];
         })).values()].sort((a, b) => a.label.localeCompare(b.label)).map((appearance) => (
@@ -503,6 +690,69 @@ export function WorldMap({
         <p className="map-status" role="status">
           Loading world map…
         </p>
+      )}
+      {drilldown && (
+        <section className="cluster-drilldown" aria-label="Events at this location">
+          <header>
+            <p>
+              {drilldown.events.every(({ locationPrecision }) => locationPrecision === "country_approximate")
+                ? `${drilldown.events.length} reports in this country`
+                : `${drilldown.events.length} events here`}
+            </p>
+            <button type="button" aria-label="Close location events" onClick={() => setDrilldown(null)}>×</button>
+          </header>
+          <p className="cluster-drilldown__place">
+            {drilldown.events.find(({ locationDisplayName }) => locationDisplayName)?.locationDisplayName
+              ?? `${drilldown.coordinates[1].toFixed(2)}, ${drilldown.coordinates[0].toFixed(2)}`}
+          </p>
+          {(() => {
+            const event = drilldown.events[drilldown.index];
+            return (
+              <>
+                <button
+                  className="cluster-drilldown__event"
+                  type="button"
+                  onClick={() => {
+                    suppressNextFocusRef.current = event.id;
+                    onActivate(event.id);
+                  }}
+                >
+                  <b style={{ "--event-colour": event.color } as CSSProperties} />
+                  <span>
+                    <small>
+                      {event.visualLabel}
+                      {event.locationPrecision === "country_approximate" ? " · country approximate" : ""}
+                    </small>
+                    <strong>{event.title}</strong>
+                  </span>
+                </button>
+                <nav aria-label="Events at this location pagination">
+                  <button
+                    type="button"
+                    aria-label="Previous location event"
+                    onClick={() => setDrilldown((current) => current && ({
+                      ...current,
+                      index: (current.index - 1 + current.events.length) % current.events.length,
+                    }))}
+                  >
+                    ←
+                  </button>
+                  <span>{drilldown.index + 1} / {drilldown.events.length}</span>
+                  <button
+                    type="button"
+                    aria-label="Next location event"
+                    onClick={() => setDrilldown((current) => current && ({
+                      ...current,
+                      index: (current.index + 1) % current.events.length,
+                    }))}
+                  >
+                    →
+                  </button>
+                </nav>
+              </>
+            );
+          })()}
+        </section>
       )}
     </div>
   );

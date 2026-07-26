@@ -19,10 +19,10 @@ natural-hazard coverage useful independently.
 
 - A map-led, responsive briefing with five-chapter event stories.
 - Ten fixed public-interest categories with explicit unscored states.
-- Forty curated RSS/Atom feeds with fuzzy story identity, independent feed
+- Forty curated RSS/Atom feeds with fuzzy story identity, general incident merging, independent feed
   health, honest geography, attributable images, and `wm-lens-news-v1`
   importance scoring.
-- Direct USGS and NASA EONET providers plus optional authenticated WorldMonitor adapters.
+- Direct USGS and NASA EONET activity layers plus optional authenticated WorldMonitor adapters.
 - Independent, non-overlapping provider schedules and per-provider degradation.
 - Canonical observations, evidence, cross-provider clustering, SQLite snapshots, and SSE updates.
 - Transparent `lens-v1` scoring, diversity-aware selection, 24-hour playback, source-derived timeline markers, and source trails.
@@ -104,6 +104,19 @@ The frozen controlled corpus reports precision **1.000**, recall **0.858**, F1 *
 `live-feed-smoke` checks one feed per category and prints current feed health,
 duplicate compression, category coverage, map precision, source diversity, and
 selected-story count. Its output changes with the live web and is observational.
+Use `npm run live-feed-smoke -- --all` to check all configured feeds.
+
+Existing databases can adopt the current location references without changing
+observation IDs:
+
+```sh
+npm run reindex -- --dry-run
+npm run reindex
+```
+
+`GET /api/v1/providers/health` exposes provider and feed failures.
+`GET /api/v1/metrics` exposes article, canonical-event, location, collision,
+selected-event, and observed-activity counts.
 
 ## How it works
 

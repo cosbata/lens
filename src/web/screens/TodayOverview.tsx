@@ -35,10 +35,12 @@ export function filterTodayEvents(
 
 export function TodayOverview({
   events = TODAY_EVENTS,
+  activityEvents = [],
   primaryEvent,
   liveState = "polling",
 }: {
   events?: readonly TodayEvent[];
+  activityEvents?: readonly TodayEvent[];
   primaryEvent?: TodayEvent;
   liveState?: "live" | "polling" | "offline";
 }) {
@@ -57,6 +59,13 @@ export function TodayOverview({
     () => filterTodayEvents(events, query, category),
     [category, events, query],
   );
+  const mapEvents = useMemo(
+    () => [
+      ...visibleEvents,
+      ...activityEvents.filter(({ id }) => !visibleEvents.some((event) => event.id === id)),
+    ],
+    [activityEvents, visibleEvents],
+  );
   const mainEvent = useMemo(
     () => primaryEvent ?? selectPrimaryEvent(events),
     [events, primaryEvent],
@@ -67,11 +76,11 @@ export function TodayOverview({
     setHasSelectedEvent(true);
   }, []);
   useEffect(() => {
-    if (visibleEvents.length && !visibleEvents.some(({ id }) => id === activeId)) {
-      setActiveId(visibleEvents[0].id);
+    if (mapEvents.length && !mapEvents.some(({ id }) => id === activeId)) {
+      setActiveId(mapEvents[0].id);
     }
-  }, [activeId, visibleEvents]);
-  const active = visibleEvents.find(({ id }) => id === activeId) ?? visibleEvents[0];
+  }, [activeId, mapEvents]);
+  const active = mapEvents.find(({ id }) => id === activeId) ?? mapEvents[0];
   const showIntro = !hasSelectedEvent && !watchlistExpanded;
   return (
     <section
@@ -85,6 +94,7 @@ export function TodayOverview({
       {active ? (
         <WorldMap
           events={visibleEvents}
+          activityEvents={activityEvents}
           activeId={active.id}
           onActivate={activate}
           showEvents={showEvents}
@@ -123,7 +133,7 @@ export function TodayOverview({
         />
       </div>
       <MonitorPanel
-        events={visibleEvents}
+        events={mapEvents}
         active={hasSelectedEvent ? active : undefined}
         liveState={liveState}
         onSelect={activate}

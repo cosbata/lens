@@ -41,19 +41,24 @@ export function groupCanonicalObservations(observations: Observation[]) {
   }));
 }
 
+const eventIdForObservation = (observation: Observation) =>
+  observation.provider === "rss" ? `event:${observation.id}` : observation.id;
+
 function mergedEvent(store: LensStore, observations: Observation[]): EventCluster {
   const sorted = [...observations].sort(
     (left, right) => left.occurredAt.localeCompare(right.occurredAt) || left.id.localeCompare(right.id),
   );
   const preferred = sorted.find(({ provider }) => provider === "usgs") ?? sorted[0];
-  const evidenceIds = sorted.flatMap((observation) =>
-    store.evidenceForObservation(observation.id).map(({ id }) => id)
+  const evidence = sorted.flatMap((observation) =>
+    store.evidenceForObservation(observation.id)
   );
-  const previous = store.events().find((event) =>
-    event.evidenceIds.some((id) => evidenceIds.includes(id))
-  );
+  const evidenceIds = evidence.map(({ id }) => id);
+  const related = store.events().filter((event) =>
+    event.evidenceIds.some((id) => evidenceIds.includes(id)));
+  const previous = related.find(({ id }) => id === eventIdForObservation(preferred))
+    ?? related.sort((left, right) => left.id.localeCompare(right.id))[0];
   return {
-    id: previous?.id ?? `event:${sorted[0].id}`,
+    id: previous?.id ?? eventIdForObservation(preferred),
     title: preferred.title,
     description: preferred.description,
     primaryCategory: preferred.primaryCategory,
@@ -74,7 +79,11 @@ function mergedEvent(store: LensStore, observations: Observation[]): EventCluste
     phase: previous?.phase ?? "active",
     measurements: preferred.measurements,
     evidenceIds,
-    sourceFamilies: [...new Set(sorted.map(({ sourceFamily }) => sourceFamily))],
+    sourceFamilies: [...new Set(
+      evidence.length > 0
+        ? evidence.map(({ sourceFamily }) => sourceFamily)
+        : sorted.map(({ sourceFamily }) => sourceFamily),
+    )],
   };
 }
 
@@ -82,6 +91,16 @@ export function reconcileEvents(store: LensStore) {
   return groupCanonicalObservations(store.observations()).map(({ observations, mergeReasons }) => {
     const event = mergedEvent(store, observations);
     store.saveEvent(event);
+    const observationIds = new Set(observations.map(eventIdForObservation));
+    for (const duplicate of store.events()) {
+      if (
+        duplicate.id !== event.id
+        && duplicate.phase === "active"
+        && observationIds.has(duplicate.id)
+      ) {
+        store.saveEvent({ ...duplicate, phase: "resolved", lastSeenAt: event.lastSeenAt });
+      }
+    }
     return { event, observationIds: observations.map(({ id }) => id), mergeReasons };
   });
 }

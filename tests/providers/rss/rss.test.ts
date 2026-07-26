@@ -42,6 +42,27 @@ describe("curated RSS collection", () => {
     });
   });
 
+  it("normalizes CDATA and encoded HTML to readable plain text", () => {
+    const parsed = parseRssXml(`
+      <rss><channel><item>
+        <title><![CDATA[Storm &amp; response]]></title>
+        <link>https://example.test/storm</link>
+        <guid>storm-1</guid>
+        <pubDate>Sun, 26 Jul 2026 08:00:00 GMT</pubDate>
+        <description><![CDATA[
+          <p>Crews &amp; residents <a href="https://example.test">moved inland</a>.</p>
+          <script>ignored()</script>
+        ]]></description>
+      </item></channel></rss>
+    `, feed, now);
+
+    expect(parsed.items[0]).toMatchObject({
+      title: "Storm & response",
+      description: "Crews & residents moved inland.",
+    });
+    expect(parsed.items[0].description).not.toMatch(/[<>]|ignored/);
+  });
+
   it("sends conditional headers and accepts a 304 response", async () => {
     const fetcher = async (_url: string | URL | Request, init?: RequestInit) => {
       expect(new Headers(init?.headers).get("if-none-match")).toBe("\"v1\"");
@@ -52,5 +73,25 @@ describe("curated RSS collection", () => {
       previous: { etag: "\"v1\"" },
       now,
     })).resolves.toMatchObject({ status: "not_modified", etag: "\"v1\"" });
+  });
+
+  it("prefers Atom alternate links and keeps scanning until 30 valid items", () => {
+    const invalid = Array.from({ length: 30 }, (_, index) =>
+      `<entry><title>Invalid ${index}</title><link href="https://example.test/${index}"/></entry>`
+    ).join("");
+    const parsed = parseRssXml(`
+      <feed>
+        ${invalid}
+        <entry>
+          <title>Valid update</title>
+          <link rel="self" href="https://example.test/api/item"/>
+          <link rel="alternate" href="https://example.test/article"/>
+          <id>valid-1</id>
+          <updated>2026-07-26T08:00:00Z</updated>
+        </entry>
+      </feed>
+    `, feed, now);
+    expect(parsed).toMatchObject({ parsedTotal: 31, droppedInvalid: 30 });
+    expect(parsed.items[0].link).toBe("https://example.test/article");
   });
 });

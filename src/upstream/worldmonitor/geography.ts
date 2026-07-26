@@ -76,6 +76,41 @@ const HUBS: Hub[] = [
   { name: "Buenos Aires", country: "AR", coordinates: [-58.3816, -34.6037], terms: ["buenos aires"] },
 ];
 
+const COUNTRY_REPRESENTATIVE_POINTS: Record<string, [number, number]> = {
+  AE: [54.3773, 24.4539],
+  AF: [69.2075, 34.5553],
+  AR: [-58.3816, -34.6037],
+  BE: [4.3517, 50.8503],
+  BR: [-47.8919, -15.7975],
+  CA: [-75.6972, 45.4215],
+  CN: [116.4074, 39.9042],
+  EG: [31.2357, 30.0444],
+  FR: [2.3522, 48.8566],
+  GB: [-0.1278, 51.5074],
+  ID: [106.8456, -6.2088],
+  IL: [35.2137, 31.7683],
+  IN: [77.209, 28.6139],
+  IQ: [44.3661, 33.3152],
+  IR: [51.389, 35.6892],
+  JP: [139.6917, 35.6895],
+  KE: [36.8219, -1.2921],
+  KR: [126.978, 37.5665],
+  MX: [-99.1332, 19.4326],
+  NG: [3.3792, 6.5244],
+  PA: [-79.5199, 8.9824],
+  PH: [120.9842, 14.5995],
+  PK: [73.0479, 33.6844],
+  PL: [21.0122, 52.2297],
+  PS: [35.2137, 31.7683],
+  QA: [51.531, 25.2854],
+  RU: [37.6173, 55.7558],
+  SA: [46.6753, 24.7136],
+  SG: [103.8198, 1.3521],
+  TR: [32.8597, 39.9334],
+  UA: [30.5234, 50.4501],
+  US: [-77.0369, 38.9072],
+};
+
 const countryNames = countryNamesJson as Record<string, string>;
 const countryBboxes = countryBboxesJson as Record<string, number[]>;
 const blockedAliases = new Set(["georgia", "chad", "jordan", "turkey"]);
@@ -83,6 +118,7 @@ const explicitAliases: Array<[string, string]> = [
   ["united states", "US"], ["u s", "US"], ["usa", "US"],
   ["united kingdom", "GB"], ["u k", "GB"], ["uk", "GB"],
   ["south korea", "KR"], ["north korea", "KP"], ["uae", "AE"],
+  ["türkiye", "TR"], ["turkiye", "TR"], ["turkey", "TR"],
 ];
 const countryAliases = [
   ...explicitAliases,
@@ -103,16 +139,29 @@ function includesTerm(text: string, term: string) {
 
 export function inferNewsLocation(text: string): NewsLocation {
   const normalized = normalize(text);
-  for (const hub of HUBS) {
+  const hubMatches = HUBS.flatMap((hub) => {
     const term = [...hub.terms].sort((a, b) => b.length - a.length)
       .find((candidate) => includesTerm(normalized, candidate));
-    if (!term) continue;
+    return term ? [{ hub, term }] : [];
+  });
+  if (hubMatches.length === 1) {
+    const [{ hub, term }] = hubMatches;
     return {
       geometry: { type: "Point", coordinates: hub.coordinates },
       affectedCountries: hub.country ? [hub.country] : [],
       precision: "named_hub",
       displayName: hub.name,
       matchedTerms: [term],
+      referenceVersion: REFERENCE_VERSION,
+    };
+  }
+  if (hubMatches.length > 1) {
+    return {
+      geometry: null,
+      affectedCountries: [...new Set(hubMatches.flatMap(({ hub }) => hub.country ? [hub.country] : []))],
+      precision: "unmapped",
+      displayName: "Multiple named locations",
+      matchedTerms: hubMatches.map(({ term }) => term),
       referenceVersion: REFERENCE_VERSION,
     };
   }
@@ -130,11 +179,15 @@ export function inferNewsLocation(text: string): NewsLocation {
       };
     }
     const bbox = countryBboxes[code];
-    if (bbox?.length === 4) {
+    const representative = COUNTRY_REPRESENTATIVE_POINTS[code]
+      ?? (bbox?.length === 4
+        ? [(bbox[1] + bbox[3]) / 2, (bbox[0] + bbox[2]) / 2] as [number, number]
+        : undefined);
+    if (representative) {
       return {
         geometry: {
           type: "Point",
-          coordinates: [(bbox[1] + bbox[3]) / 2, (bbox[0] + bbox[2]) / 2],
+          coordinates: representative,
         },
         affectedCountries: [code],
         precision: "country_approximate",

@@ -83,8 +83,37 @@ describe("WorldMonitor degradation isolation", () => {
 
     const event = store.events()[0];
     expect(event.primaryCategory).toBe("security");
+    expect(event.sourceFamilies).toEqual(["worldmonitor-news"]);
     expect(store.eventScores(event.id)[0].reasons).toContain("upstream_threat.threat_level_high");
     expect(JSON.stringify(store.eventScores(event.id))).not.toContain("importanceScore");
+    store.close();
+  });
+
+  it("uses the shared location inference when a digest item has no coordinates", async () => {
+    const store = new LensStore();
+    await ingestWorldMonitor({
+      store,
+      now: () => new Date("2026-07-26T08:01:00Z"),
+      loadDigest: async () => ({
+        generatedAt: "2026-07-26T08:00:00Z",
+        categories: {
+          climate: {
+            items: [{
+              source: "Reuters",
+              title: "Firefighters battle wildfires across France",
+              link: "https://example.com/france-fire",
+              publishedAt: "2026-07-26T07:50:00Z",
+            }],
+          },
+        },
+      }),
+    });
+
+    expect(store.events()[0]).toMatchObject({
+      affectedCountries: ["FR"],
+      geometry: { type: "Point", coordinates: [2.3522, 48.8566] },
+      measurements: { locationPrecision: "country_approximate" },
+    });
     store.close();
   });
 });

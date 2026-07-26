@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { parseEvidence, parseObservation, type Observation } from "../../src/core/model";
+import {
+  parseEventCluster,
+  parseEvidence,
+  parseObservation,
+  type Observation,
+} from "../../src/core/model";
 import { LensStore } from "../../src/server/store";
 import {
   groupCanonicalObservations,
@@ -38,6 +43,23 @@ describe("cross-provider reconciliation", () => {
         fetchedAt: observation.fetchedAt,
         title: observation.title,
       }));
+      store.saveEvent(parseEventCluster({
+        id: observation.id,
+        title: observation.title,
+        description: observation.description,
+        primaryCategory: observation.primaryCategory,
+        relatedCategories: observation.relatedCategories,
+        geometry: observation.geometry,
+        globalScope: observation.globalScope,
+        affectedCountries: observation.affectedCountries,
+        firstSeenAt: observation.fetchedAt,
+        lastSeenAt: observation.fetchedAt,
+        lastMaterialUpdateAt: observation.occurredAt,
+        phase: "active",
+        measurements: observation.measurements,
+        evidenceIds: [`${observation.id}:evidence`],
+        sourceFamilies: [observation.sourceFamily],
+      }));
     }
 
     const reconciled = reconcileEvents(store);
@@ -50,6 +72,8 @@ describe("cross-provider reconciliation", () => {
       ],
       sourceFamilies: ["usgs", "gdacs"],
     });
+    expect(store.events().filter(({ phase }) => phase === "active")).toHaveLength(2);
+    expect(store.event("worldmonitor:quake-1")?.phase).toBe("resolved");
     store.close();
   });
 });

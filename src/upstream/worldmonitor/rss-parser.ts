@@ -57,6 +57,15 @@ function decodeXml(value: string) {
     .replace(/&amp;/g, "&");
 }
 
+function plainText(value: string) {
+  return decodeXml(value)
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.,!?;:])/g, "$1")
+    .trim();
+}
+
 function tag(block: string, name: string) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const cdata = block.match(new RegExp(
@@ -88,6 +97,16 @@ function attribute(block: string, tagName: string, attributeName: string) {
   ))?.[1] ?? "";
 }
 
+function atomLink(block: string) {
+  const links = [...block.matchAll(/<link\b([^>]*)>/gi)].map(([, attributes]) => ({
+    href: attributes.match(/\bhref=["']([^"']+)["']/i)?.[1] ?? "",
+    rel: attributes.match(/\brel=["']([^"']+)["']/i)?.[1]?.toLowerCase() ?? "",
+  }));
+  return links.find(({ href, rel }) => href && rel === "alternate")?.href
+    ?? links.find(({ href, rel }) => href && (rel === "" || rel === "alternate"))?.href
+    ?? "";
+}
+
 function imageUrl(block: string) {
   const candidates = [
     attribute(block, "media:content", "url"),
@@ -99,7 +118,7 @@ function imageUrl(block: string) {
 
 function cleanDescription(block: string, atom: boolean, title: string) {
   const candidates = DESCRIPTION_TAGS[atom ? "atom" : "rss"]
-    .map((name) => tag(block, name).replace(/\s+/g, " ").trim())
+    .map((name) => plainText(tag(block, name)))
     .filter(Boolean)
     .sort((left, right) => right.length - left.length);
   const value = candidates[0] ?? "";
@@ -119,11 +138,12 @@ export function parseRssXml(xml: string, feed: RssFeed, now: Date): ParsedFeed {
 
   const items: ParsedFeedItem[] = [];
   let droppedInvalid = 0;
-  for (const match of blocks.slice(0, MAX_ITEMS)) {
+  for (const match of blocks) {
+    if (items.length >= MAX_ITEMS) break;
     const block = match[1];
-    const title = tag(block, "title").replace(/\s+/g, " ").trim();
+    const title = plainText(tag(block, "title"));
     const href = atom
-      ? block.match(/<link[^>]+href=["']([^"']+)["']/i)?.[1] ?? ""
+      ? atomLink(block)
       : tag(block, "link");
     const link = /^https?:\/\//i.test(href) ? decodeXml(href) : "";
     const published = firstTag(block, DATE_TAGS[atom ? "atom" : "rss"]);
@@ -144,7 +164,9 @@ export function parseRssXml(xml: string, feed: RssFeed, now: Date): ParsedFeed {
       categoryHint: feed.categoryHint,
       language: feed.language ?? "en",
       ...(imageUrl(block) ? { imageUrl: imageUrl(block) } : {}),
-      ...(tag(block, "media:credit") ? { imageCredit: tag(block, "media:credit") } : {}),
+      ...(tag(block, "media:credit")
+        ? { imageCredit: plainText(tag(block, "media:credit")) }
+        : {}),
     });
   }
   return { items, parsedTotal: blocks.length, droppedInvalid };

@@ -29,7 +29,7 @@ type ApiEvent = {
 
 export type BriefingResponse = {
   meta: { state: "empty" | "fresh" | "stale" | "degraded"; dataTime: string | null };
-  data: { events: ApiEvent[]; watchlist?: ApiEvent[] };
+  data: { events: ApiEvent[]; watchlist?: ApiEvent[]; activity?: ApiEvent[] };
 };
 
 type LiveEventSource = {
@@ -190,6 +190,10 @@ export function briefingToPrimaryEvent(
   fallback: TodayEvent,
 ) {
   return apiEventsToTodayEvents(briefing.data.events, [fallback])[0];
+}
+
+export function briefingToActivityEvents(briefing: BriefingResponse) {
+  return apiEventsToTodayEvents(briefing.data.activity ?? [], []);
 }
 
 export function watchBriefing({

@@ -131,6 +131,23 @@ function addWatchlistEvents(store: LensStore, count: number) {
   }
 }
 
+function addObservedActivity(store: LensStore) {
+  const baseEvent = store.event("event-1") as EventCluster;
+  const baseScore = store.eventScores("event-1")[0] as EventScore;
+  store.saveEvent({
+    ...baseEvent,
+    id: "eonet:activity-1",
+    title: "Observed wildfire",
+    sourceFamilies: ["eonet:InciWeb"],
+    evidenceIds: [],
+  });
+  store.appendEventScore({
+    ...baseScore,
+    eventId: "eonet:activity-1",
+    finalScore: 12,
+  });
+}
+
 describe("read API", () => {
   it("returns an explicit empty briefing", async () => {
     const store = new LensStore();
@@ -187,6 +204,24 @@ describe("read API", () => {
     expect(response.json().data.watchlist[0].event.id).toBe("event-1");
   });
 
+  it("returns structured activity independently of the editorial score floor", async () => {
+    const store = storeWith();
+    addObservedActivity(store);
+    const response = await buildServer({
+      store,
+      now: () => new Date("2026-07-25T12:30:00Z"),
+    }).inject({ method: "GET", url: "/api/v1/briefing" });
+    const data = response.json().data as {
+      activity: Array<{ event: EventCluster }>;
+      watchlist: Array<{ event: EventCluster }>;
+    };
+
+    expect(data.activity.map(({ event }) => event.id)).toEqual([
+      "eonet:activity-1",
+    ]);
+    expect(data.watchlist.map(({ event }) => event.id)).not.toContain("eonet:activity-1");
+  });
+
   it("distinguishes stale and degraded data", async () => {
     const staleServer = buildServer({
       store: storeWith(),
@@ -205,6 +240,22 @@ describe("read API", () => {
       method: "GET",
       url: "/api/v1/providers/health",
     })).json().meta).toMatchObject({ state: "degraded", degraded: true });
+  });
+
+  it("publishes pipeline and map integrity metrics", async () => {
+    const store = storeWith();
+    addObservedActivity(store);
+    const response = await buildServer({
+      store,
+      now: () => new Date("2026-07-25T12:30:00Z"),
+    }).inject({ method: "GET", url: "/api/v1/metrics" });
+
+    expect(response.json().data).toMatchObject({
+      canonicalEvents: 2,
+      selectedEvents: 1,
+      observedActivity: 1,
+      locations: { mapped: 2 },
+    });
   });
 
   it("validates lookups and publishes the methodology contract", async () => {

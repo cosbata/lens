@@ -406,6 +406,17 @@ export function WorldMap({
         map.getCanvas().style.cursor = "";
         popup.remove();
       };
+      const openLocationEvents = (
+        coordinates: [number, number],
+        locationEvents: ClusterDrilldownEvent[],
+      ) => {
+        const first = locationEvents[0];
+        if (!first) return false;
+        suppressNextFocusRef.current = first.id;
+        setDrilldown({ coordinates, events: locationEvents, index: 0 });
+        onActivate(first.id);
+        return true;
+      };
       map.on("mouseenter", "lens-event-points", showEvent);
       map.on("mouseleave", "lens-event-points", hidePopup);
       map.on("click", "lens-event-points", (event) => {
@@ -428,14 +439,7 @@ export function WorldMap({
         const pointCount = Number(item.properties?.point_count);
         const leaves = await source.getClusterLeaves(clusterId, pointCount, 0);
         const eventsHere = clusterDrilldownEvents(leaves);
-        if (eventsHere.length > 0) {
-          setDrilldown({
-            coordinates: item.geometry.coordinates as [number, number],
-            events: eventsHere,
-            index: 0,
-          });
-          return;
-        }
+        if (openLocationEvents(item.geometry.coordinates as [number, number], eventsHere)) return;
         map.easeTo({
           center: item.geometry.coordinates as [number, number],
           zoom: await source.getClusterExpansionZoom(clusterId),
@@ -478,14 +482,7 @@ export function WorldMap({
         const pointCount = Number(item.properties?.point_count);
         const leaves = await source.getClusterLeaves(clusterId, pointCount, 0);
         const eventsHere = clusterDrilldownEvents(leaves);
-        if (eventsHere.length > 0) {
-          setDrilldown({
-            coordinates: item.geometry.coordinates as [number, number],
-            events: eventsHere,
-            index: 0,
-          });
-          return;
-        }
+        if (openLocationEvents(item.geometry.coordinates as [number, number], eventsHere)) return;
         const zoom = await source.getClusterExpansionZoom(clusterId);
         setDrilldown(null);
         map.easeTo({ center: item.geometry.coordinates as [number, number], zoom });
@@ -645,6 +642,15 @@ export function WorldMap({
     temporalAt,
   ]);
 
+  const selectLocationEvent = (offset: number) => {
+    if (!drilldown) return;
+    const index = (drilldown.index + offset + drilldown.events.length) % drilldown.events.length;
+    const event = drilldown.events[index];
+    setDrilldown({ ...drilldown, index });
+    suppressNextFocusRef.current = event.id;
+    onActivate(event.id);
+  };
+
   return (
     <div
       className="world-map"
@@ -712,10 +718,8 @@ export function WorldMap({
                 <button
                   className="cluster-drilldown__event"
                   type="button"
-                  onClick={() => {
-                    suppressNextFocusRef.current = event.id;
-                    onActivate(event.id);
-                  }}
+                  aria-label={`Show details for ${event.title}`}
+                  onClick={() => selectLocationEvent(0)}
                 >
                   <b style={{ "--event-colour": event.color } as CSSProperties} />
                   <span>
@@ -730,10 +734,7 @@ export function WorldMap({
                   <button
                     type="button"
                     aria-label="Previous location event"
-                    onClick={() => setDrilldown((current) => current && ({
-                      ...current,
-                      index: (current.index - 1 + current.events.length) % current.events.length,
-                    }))}
+                    onClick={() => selectLocationEvent(-1)}
                   >
                     ←
                   </button>
@@ -741,10 +742,7 @@ export function WorldMap({
                   <button
                     type="button"
                     aria-label="Next location event"
-                    onClick={() => setDrilldown((current) => current && ({
-                      ...current,
-                      index: (current.index + 1) % current.events.length,
-                    }))}
+                    onClick={() => selectLocationEvent(1)}
                   >
                     →
                   </button>

@@ -130,13 +130,15 @@
 .maplibregl-popup-tip { display: none; }
 .cluster-drilldown {
   position: absolute;
-  z-index: 3;
-  top: 10rem;
-  left: 20rem;
-  width: min(21rem, calc(100vw - 3rem));
-  max-height: min(26rem, calc(100svh - 16rem));
+  z-index: 4;
+  top: 5.5rem;
+  left: 50%;
+  width: min(24rem, calc(100vw - 44rem));
+  min-width: 18rem;
+  max-height: min(19rem, calc(100svh - 8rem));
   display: flex;
   flex-direction: column;
+  transform: translateX(-50%);
   border: 1px solid rgb(240 237 229 / 18%);
   background: rgb(8 9 8 / 92%);
   color: var(--paper);
@@ -642,6 +644,16 @@
     right: .75rem;
   }
   .overview-copy { display: none; }
+  .cluster-drilldown {
+    top: auto;
+    right: .75rem;
+    bottom: 19.75rem;
+    left: .75rem;
+    width: auto;
+    min-width: 0;
+    max-height: 13rem;
+    transform: none;
+  }
   .monitor-dock {
     top: 5.5rem;
     right: .75rem;

@@ -1,0 +1,17 @@
+{
+  "events": [
+    {
+      "id": "wm-iran-001",
+      "title": "Airspace restrictions announced near the border",
+      "category": "security",
+      "sourceUrl": "https://iran.liveuamap.com/en/2026/25-july-example",
+      "latitude": 35.6892,
+      "longitude": 51.389,
+      "locationName": "Tehran, Iran",
+      "timestamp": 1784973600000,
+      "severity": "high",
+      "importanceScore": 99
+    }
+  ],
+  "scrapedAt": 1784973900000
+}

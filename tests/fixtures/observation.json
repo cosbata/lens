@@ -1,0 +1,23 @@
+{
+  "id": "observation-usgs-1",
+  "provider": "usgs",
+  "providerSourceId": "usgs-1",
+  "sourceFamily": "usgs",
+  "url": "https://earthquake.usgs.gov/earthquakes/eventpage/usgs-1",
+  "occurredAt": "2026-07-25T10:00:00Z",
+  "fetchedAt": "2026-07-25T10:05:00Z",
+  "title": "Magnitude 6.1 earthquake",
+  "description": "A magnitude 6.1 earthquake was recorded.",
+  "primaryCategory": "disasters",
+  "relatedCategories": [],
+  "geometry": {
+    "type": "Point",
+    "coordinates": [127, 37]
+  },
+  "globalScope": false,
+  "affectedCountries": ["KR"],
+  "measurements": {
+    "magnitude": 6.1
+  },
+  "extension": {}
+}

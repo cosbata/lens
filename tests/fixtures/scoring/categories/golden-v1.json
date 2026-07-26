@@ -1,0 +1,12 @@
+[
+  { "category": "conflict", "input": { "scale": 80, "exposure": 60, "disruption": 70, "duration": 50 }, "expected": 67.5 },
+  { "category": "politics-diplomacy", "input": { "scale": 80, "exposure": 60, "disruption": 70, "duration": 50 }, "expected": 65.5 },
+  { "category": "security", "input": { "scale": 80, "exposure": 60, "disruption": 70, "duration": 50 }, "expected": 67.5 },
+  { "category": "disasters", "input": { "scale": 80, "exposure": 60, "disruption": 70, "duration": 50, "officialFloor": 75 }, "expected": 75 },
+  { "category": "climate-environment", "input": { "scale": 80, "exposure": 60, "disruption": 70, "duration": 50 }, "expected": 64 },
+  { "category": "economy", "input": { "scale": 80, "exposure": 60, "disruption": 70, "duration": 50 }, "expected": 66.5 },
+  { "category": "energy", "input": { "scale": 80, "exposure": 60, "disruption": 70, "duration": 50 }, "expected": 68 },
+  { "category": "supply-chains", "input": { "scale": 80, "exposure": 60, "disruption": 70, "duration": 50 }, "expected": 67 },
+  { "category": "health", "input": { "scale": 80, "exposure": 60, "disruption": 70, "duration": 50 }, "expected": 64.5 },
+  { "category": "technology-infrastructure", "input": { "scale": 80, "exposure": 60, "disruption": 70, "duration": 50 }, "expected": 68 }
+]

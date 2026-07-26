@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <guid>rss-1</guid>
+      <title><![CDATA[Port closure disrupts regional shipping]]></title>
+      <link>https://example.test/port-closure</link>
+      <pubDate>Sun, 26 Jul 2026 08:00:00 GMT</pubDate>
+      <description><![CDATA[Cargo operators rerouted vessels after the port closed.]]></description>
+      <media:thumbnail url="https://images.example.test/port.jpg" />
+      <media:credit>Example Newsroom</media:credit>
+    </item>
+    <item>
+      <title>Missing date is rejected</title>
+      <link>https://example.test/missing-date</link>
+    </item>
+  </channel>
+</rss>

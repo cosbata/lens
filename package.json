@@ -1,0 +1,57 @@
+{
+  "name": "lens-live-world-briefing",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cosbata/lens.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "tsx watch src/server/index.ts",
+    "start": "tsx src/server/index.ts",
+    "serve": "tsx src/server/index.ts",
+    "replay": "tsx scripts/replay.ts",
+    "live-feed-smoke": "tsx scripts/live-feed-smoke.ts",
+    "validate:evaluation": "tsx scripts/validate-evaluation.ts",
+    "evaluate": "tsx scripts/evaluate.ts",
+    "license:check": "tsx scripts/check-licenses.ts",
+    "docs:check": "tsx scripts/check-docs.ts",
+    "test": "vitest run --exclude tests/e2e/**",
+    "test:e2e": "playwright test",
+    "verify:e2e": "npm run build && npm run test:e2e",
+    "verify:docs": "npm run docs:check && npm run replay -- --fixture tests/fixtures/replay/baseline.json",
+    "verify:release": "npm test && npm run typecheck && npm run lint && npm run build && npm run test:e2e && npm run validate:evaluation && npm run evaluate -- --dataset tests/fixtures/evaluation/v1.json && npm run evaluate -- --dataset tests/fixtures/evaluation/production.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@deck.gl/core": "^9.3.7",
+    "@deck.gl/geo-layers": "^9.3.7",
+    "@deck.gl/mapbox": "^9.3.7",
+    "@mantine/core": "^9.4.2",
+    "@mantine/hooks": "^9.4.2",
+    "fastify": "^5.5.0",
+    "maplibre-gl": "^6.0.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.62.0",
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.4",
+    "vitest": "^3.2.4"
+  }
+}

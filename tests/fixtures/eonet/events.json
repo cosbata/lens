@@ -1,0 +1,36 @@
+{
+  "title": "EONET Events",
+  "events": [
+    {
+      "id": "EONET_9999",
+      "title": "Wildfire - Example Province",
+      "description": "A large wildfire remains active.",
+      "link": "https://eonet.gsfc.nasa.gov/api/v3/events/EONET_9999",
+      "closed": null,
+      "categories": [
+        { "id": "wildfires", "title": "Wildfires" }
+      ],
+      "sources": [
+        { "id": "InciWeb", "url": "https://inciweb.wildfire.gov/incident-information/example" }
+      ],
+      "geometry": [
+        {
+          "magnitudeValue": 18.2,
+          "magnitudeUnit": "acres",
+          "date": "2026-07-25T06:00:00Z",
+          "type": "Point",
+          "coordinates": [-121.1, 38.1]
+        },
+        {
+          "magnitudeValue": 32.4,
+          "magnitudeUnit": "acres",
+          "date": "2026-07-25T09:00:00Z",
+          "type": "Point",
+          "coordinates": [-120.5, 38.5]
+        }
+      ],
+      "magnitudeValue": 32.4,
+      "magnitudeUnit": "acres"
+    }
+  ]
+}

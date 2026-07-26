@@ -1,0 +1,106 @@
+{
+  "id": "baseline-2026-07-25",
+  "now": "2026-07-25T12:00:00Z",
+  "events": [
+    {
+      "id": "quake-a",
+      "provider": "usgs",
+      "providerSourceId": "quake-a",
+      "canonicalUrl": "https://example.com/quake-a",
+      "title": "Major earthquake strikes Example region",
+      "eventType": "earthquake",
+      "entities": ["Example"],
+      "locationKey": "KR",
+      "occurredAt": "2026-07-25T10:00:00Z",
+      "category": "disasters",
+      "countries": ["KR"],
+      "domainImpact": 100,
+      "urgency": 95,
+      "momentum": 90,
+      "geographicReach": 80,
+      "anomaly": 90,
+      "cascadeRelevance": 85,
+      "phase": "active",
+      "lastMaterialUpdateAt": "2026-07-25T11:30:00Z",
+      "sources": [
+        { "sourceId": "usgs-a", "sourceFamily": "usgs", "authority": "official", "structured": true, "completeness": 100 },
+        { "sourceId": "wire-a", "sourceFamily": "wire", "authority": "institutional", "structured": false, "completeness": 100 },
+        { "sourceId": "local-a", "sourceFamily": "local", "authority": "specialist", "structured": false, "completeness": 100 }
+      ]
+    },
+    {
+      "id": "quake-a-copy",
+      "provider": "wire",
+      "providerSourceId": "copy-a",
+      "canonicalUrl": "https://example.com/quake-a-copy",
+      "title": "Major earthquake hits Example region",
+      "eventType": "earthquake",
+      "entities": ["Example"],
+      "locationKey": "KR",
+      "occurredAt": "2026-07-25T10:05:00Z",
+      "category": "disasters",
+      "countries": ["KR"],
+      "domainImpact": 100,
+      "urgency": 95,
+      "momentum": 90,
+      "geographicReach": 80,
+      "anomaly": 90,
+      "cascadeRelevance": 85,
+      "phase": "active",
+      "lastMaterialUpdateAt": "2026-07-25T11:30:00Z",
+      "sources": [
+        { "sourceId": "wire-copy", "sourceFamily": "wire", "authority": "institutional", "structured": false, "completeness": 100 }
+      ]
+    },
+    {
+      "id": "security-b",
+      "provider": "official",
+      "providerSourceId": "security-b",
+      "canonicalUrl": "https://example.com/security-b",
+      "title": "Critical infrastructure disruption",
+      "eventType": "infrastructure",
+      "entities": ["Grid"],
+      "locationKey": "JP",
+      "occurredAt": "2026-07-25T09:00:00Z",
+      "category": "security",
+      "countries": ["JP"],
+      "domainImpact": 90,
+      "urgency": 90,
+      "momentum": 75,
+      "geographicReach": 70,
+      "anomaly": 85,
+      "cascadeRelevance": 90,
+      "phase": "active",
+      "lastMaterialUpdateAt": "2026-07-25T11:00:00Z",
+      "sources": [
+        { "sourceId": "agency-b", "sourceFamily": "agency", "authority": "official", "structured": true, "completeness": 100 },
+        { "sourceId": "wire-b", "sourceFamily": "wire-b", "authority": "institutional", "structured": false, "completeness": 100 }
+      ]
+    },
+    {
+      "id": "economy-c",
+      "provider": "official",
+      "providerSourceId": "economy-c",
+      "canonicalUrl": "https://example.com/economy-c",
+      "title": "Unexpected regional market shock",
+      "eventType": "market",
+      "entities": ["Market"],
+      "locationKey": "US",
+      "occurredAt": "2026-07-25T08:00:00Z",
+      "category": "economy",
+      "countries": ["US"],
+      "domainImpact": 85,
+      "urgency": 75,
+      "momentum": 80,
+      "geographicReach": 75,
+      "anomaly": 90,
+      "cascadeRelevance": 80,
+      "phase": "active",
+      "lastMaterialUpdateAt": "2026-07-25T10:30:00Z",
+      "sources": [
+        { "sourceId": "bank-c", "sourceFamily": "bank", "authority": "official", "structured": true, "completeness": 100 },
+        { "sourceId": "wire-c", "sourceFamily": "wire-c", "authority": "institutional", "structured": false, "completeness": 100 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+.event-media {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #d6d5d0;
+}
+
+.event-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.event-media figcaption {
+  position: absolute;
+  inset: auto 0 0;
+  display: flex;
+  justify-content: space-between;
+  padding: .45rem .65rem;
+  font-size: .48rem;
+  letter-spacing: .04em;
+}
+
+.event-media--dark figcaption {
+  background: rgb(8 10 9 / 82%);
+  color: #d5d2ca;
+}
+
+.event-media--light figcaption {
+  background: rgb(248 247 243 / 90%);
+  color: #3f4946;
+}
+
+.event-media a { color: inherit; }

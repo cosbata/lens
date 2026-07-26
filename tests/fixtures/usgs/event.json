@@ -1,0 +1,30 @@
+{
+  "feature": {
+    "type": "Feature",
+    "id": "us7000abcd",
+    "properties": {
+      "mag": 6.1,
+      "place": "120 km east of Example City",
+      "time": 1784973600000,
+      "updated": 1784973900000,
+      "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us7000abcd",
+      "detail": "https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=us7000abcd&format=geojson",
+      "felt": 82,
+      "tsunami": 0,
+      "sig": 650,
+      "alert": "green",
+      "title": "M 6.1 - 120 km east of Example City"
+    },
+    "geometry": {
+      "type": "Point",
+      "coordinates": [127.2, 37.4, 18.5]
+    }
+  },
+  "detail": {
+    "type": "Feature",
+    "id": "us7000abcd",
+    "properties": {
+      "updated": 1784973900000
+    }
+  }
+}

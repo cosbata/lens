@@ -1,0 +1,26 @@
+[
+  {
+    "name": "same provider id",
+    "expected": "merge.provider_native_id",
+    "left": { "provider": "usgs", "providerSourceId": "a" },
+    "right": { "provider": "usgs", "providerSourceId": "a" }
+  },
+  {
+    "name": "similar title and same place",
+    "expected": "merge.title_similarity",
+    "left": { "title": "Strong earthquake strikes Example region", "entities": ["Example"] },
+    "right": { "title": "Strong earthquake hits Example region", "entities": ["Example"] }
+  },
+  {
+    "name": "location conflict",
+    "expected": "separate.location_conflict",
+    "left": { "locationKey": "KR" },
+    "right": { "locationKey": "JP" }
+  },
+  {
+    "name": "entity conflict",
+    "expected": "separate.entity_conflict",
+    "left": { "entities": ["Alpha"] },
+    "right": { "entities": ["Beta"] }
+  }
+]

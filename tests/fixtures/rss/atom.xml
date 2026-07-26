@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>atom-1</id>
+    <title>Port closure disrupts shipping across the region</title>
+    <link href="https://example.test/port-closure-update" />
+    <updated>2026-07-26T08:05:00Z</updated>
+    <summary>Multiple carriers announced diversions.</summary>
+  </entry>
+</feed>

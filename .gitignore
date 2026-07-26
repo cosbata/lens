@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+test-results/
+playwright-report/
+.gjc/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.env
+*.log
+.DS_Store

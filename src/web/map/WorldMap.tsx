@@ -41,6 +41,10 @@ const geometryData = (
       : []),
   ],
 });
+const emptyFeatureCollection = () => ({
+  type: "FeatureCollection" as const,
+  features: [],
+});
 
 const SATELLITE_STYLE: StyleSpecification = {
   version: 8,
@@ -188,6 +192,37 @@ export function clusterDrilldownEvents(leaves: readonly ClusterLeaf[]): ClusterD
   });
 }
 
+const spiderData = (
+  map: MapLibreMap,
+  origin: [number, number],
+  events: readonly ClusterDrilldownEvent[],
+) => {
+  const center = map.project(origin);
+  const radius = Math.min(72, 44 + events.length * 3);
+  return {
+    type: "FeatureCollection" as const,
+    features: events.flatMap((event, index) => {
+      const angle = -Math.PI / 2 + (Math.PI * 2 * index) / events.length;
+      const coordinates = map.unproject([
+        center.x + Math.cos(angle) * radius,
+        center.y + Math.sin(angle) * radius,
+      ]).toArray() as [number, number];
+      return [
+        {
+          type: "Feature" as const,
+          properties: { kind: "leg" },
+          geometry: { type: "LineString" as const, coordinates: [origin, coordinates] },
+        },
+        {
+          type: "Feature" as const,
+          properties: { ...event, kind: "event" },
+          geometry: { type: "Point" as const, coordinates },
+        },
+      ];
+    }),
+  };
+};
+
 export function WorldMap({
   events,
   activityEvents = [],
@@ -216,13 +251,9 @@ export function WorldMap({
   const deckRef = useRef<MapboxOverlay | null>(null);
   const cameraKeyRef = useRef<string | null>(null);
   const suppressNextFocusRef = useRef<string | null>(null);
+  const spiderOpenRef = useRef(false);
   const [status, setStatus] = useState<"loading" | "ready">("loading");
   const [basemap, setBasemap] = useState<"satellite" | "boundaries">("satellite");
-  const [drilldown, setDrilldown] = useState<{
-    coordinates: [number, number];
-    events: ClusterDrilldownEvent[];
-    index: number;
-  } | null>(null);
   const mapStyle = styleUrl ?? (basemap === "boundaries" ? BOUNDARIES_STYLE : SATELLITE_STYLE);
   const allEvents = [
     ...events,
@@ -232,7 +263,6 @@ export function WorldMap({
   useEffect(() => {
     if (!containerRef.current) return;
     setStatus("loading");
-    setDrilldown(null);
     const initialEvent = allEvents.find(({ id }) => id === activeId) ?? allEvents[0];
     const initialState = temporalMapState(initialEvent, temporalAt ?? farFuture);
     const initialPlayback = tripPlayback(initialEvent.geometryHistory, temporalAt ?? farFuture);
@@ -385,6 +415,31 @@ export function WorldMap({
           "circle-radius": 9,
         },
       });
+      map.addSource("lens-spider", {
+        type: "geojson",
+        data: emptyFeatureCollection(),
+      });
+      map.addLayer({
+        id: "lens-spider-legs",
+        type: "line",
+        source: "lens-spider",
+        filter: ["==", ["get", "kind"], "leg"],
+        paint: {
+          "line-color": "rgba(240, 237, 229, .72)",
+          "line-width": 1.25,
+        },
+      });
+      map.addLayer({
+        id: "lens-spider-points",
+        type: "circle",
+        source: "lens-spider",
+        filter: ["==", ["get", "kind"], "event"],
+        paint: {
+          "circle-color": ["get", "color"],
+          "circle-opacity": 0.94,
+          "circle-radius": 8,
+        },
+      });
       const overlay = new MapboxOverlay({
         interleaved: false,
         layers: [],
@@ -406,30 +461,51 @@ export function WorldMap({
         map.getCanvas().style.cursor = "";
         popup.remove();
       };
-      const openLocationEvents = (
+      const clearSpider = () => {
+        spiderOpenRef.current = false;
+        (map.getSource("lens-spider") as GeoJSONSource).setData(emptyFeatureCollection());
+        map.setLayoutProperty("lens-event-labels", "visibility", showEvents ? "visible" : "none");
+      };
+      const expandCluster = async (
+        source: GeoJSONSource,
+        clusterId: number,
         coordinates: [number, number],
         locationEvents: ClusterDrilldownEvent[],
       ) => {
-        const first = locationEvents[0];
-        if (!first) return false;
-        suppressNextFocusRef.current = first.id;
-        setDrilldown({ coordinates, events: locationEvents, index: 0 });
-        onActivate(first.id);
-        return true;
+        clearSpider();
+        const zoom = await source.getClusterExpansionZoom(clusterId);
+        const reveal = () => {
+          if (locationEvents.length > 1) {
+            spiderOpenRef.current = true;
+            map.setLayoutProperty("lens-event-labels", "visibility", "none");
+            (map.getSource("lens-spider") as GeoJSONSource)
+              .setData(spiderData(map, coordinates, locationEvents));
+          }
+        };
+        if (locationEvents.length > 1) map.once("moveend", reveal);
+        map.easeTo({ center: coordinates, zoom });
       };
       map.on("mouseenter", "lens-event-points", showEvent);
       map.on("mouseleave", "lens-event-points", hidePopup);
       map.on("click", "lens-event-points", (event) => {
-        setDrilldown(null);
+        clearSpider();
         const id = event.features?.[0]?.properties?.id;
         if (typeof id === "string") onActivate(id);
       });
       map.on("mouseenter", "lens-activity-points", showEvent);
       map.on("mouseleave", "lens-activity-points", hidePopup);
       map.on("click", "lens-activity-points", (event) => {
-        setDrilldown(null);
+        clearSpider();
         const id = event.features?.[0]?.properties?.id;
         if (typeof id === "string") onActivate(id);
+      });
+      map.on("mouseenter", "lens-spider-points", showEvent);
+      map.on("mouseleave", "lens-spider-points", hidePopup);
+      map.on("click", "lens-spider-points", (event) => {
+        const id = event.features?.[0]?.properties?.id;
+        if (typeof id !== "string") return;
+        suppressNextFocusRef.current = id;
+        onActivate(id);
       });
       map.on("click", "lens-activity-clusters", async (event) => {
         const item = event.features?.[0];
@@ -439,11 +515,12 @@ export function WorldMap({
         const pointCount = Number(item.properties?.point_count);
         const leaves = await source.getClusterLeaves(clusterId, pointCount, 0);
         const eventsHere = clusterDrilldownEvents(leaves);
-        if (openLocationEvents(item.geometry.coordinates as [number, number], eventsHere)) return;
-        map.easeTo({
-          center: item.geometry.coordinates as [number, number],
-          zoom: await source.getClusterExpansionZoom(clusterId),
-        });
+        await expandCluster(
+          source,
+          clusterId,
+          item.geometry.coordinates as [number, number],
+          eventsHere,
+        );
       });
       map.on("mouseenter", "lens-activity-clusters", () => {
         map.getCanvas().style.cursor = "pointer";
@@ -482,10 +559,12 @@ export function WorldMap({
         const pointCount = Number(item.properties?.point_count);
         const leaves = await source.getClusterLeaves(clusterId, pointCount, 0);
         const eventsHere = clusterDrilldownEvents(leaves);
-        if (openLocationEvents(item.geometry.coordinates as [number, number], eventsHere)) return;
-        const zoom = await source.getClusterExpansionZoom(clusterId);
-        setDrilldown(null);
-        map.easeTo({ center: item.geometry.coordinates as [number, number], zoom });
+        await expandCluster(
+          source,
+          clusterId,
+          item.geometry.coordinates as [number, number],
+          eventsHere,
+        );
       });
       map.on("click", (event) => {
         const interactive = map.queryRenderedFeatures(event.point, {
@@ -494,9 +573,10 @@ export function WorldMap({
             "lens-event-points",
             "lens-activity-clusters",
             "lens-activity-points",
+            "lens-spider-points",
           ],
         });
-        if (interactive.length === 0) setDrilldown(null);
+        if (interactive.length === 0) clearSpider();
       });
       const markReady = () => {
         if (!map.isSourceLoaded("lens-events")) return;
@@ -514,15 +594,6 @@ export function WorldMap({
       mapRef.current = null;
     };
   }, [events, activityEvents, mapStyle, onActivate]);
-
-  useEffect(() => {
-    if (!drilldown) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDrilldown(null);
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [drilldown]);
 
   useEffect(() => {
     const event = allEvents.find(({ id }) => id === activeId);
@@ -562,7 +633,8 @@ export function WorldMap({
       "lens-event-labels",
     ]) {
       if (mapRef.current.getLayer(layerId)) {
-        mapRef.current.setLayoutProperty(layerId, "visibility", showEvents ? "visible" : "none");
+        const visible = showEvents && (layerId !== "lens-event-labels" || !spiderOpenRef.current);
+        mapRef.current.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
       }
     }
     deckRef.current?.setProps({
@@ -642,15 +714,6 @@ export function WorldMap({
     temporalAt,
   ]);
 
-  const selectLocationEvent = (offset: number) => {
-    if (!drilldown) return;
-    const index = (drilldown.index + offset + drilldown.events.length) % drilldown.events.length;
-    const event = drilldown.events[index];
-    setDrilldown({ ...drilldown, index });
-    suppressNextFocusRef.current = event.id;
-    onActivate(event.id);
-  };
-
   return (
     <div
       className="world-map"
@@ -696,61 +759,6 @@ export function WorldMap({
         <p className="map-status" role="status">
           Loading world map…
         </p>
-      )}
-      {drilldown && (
-        <section className="cluster-drilldown" aria-label="Events at this location">
-          <header>
-            <p>
-              {drilldown.events.every(({ locationPrecision }) => locationPrecision === "country_approximate")
-                ? `${drilldown.events.length} reports in this country`
-                : `${drilldown.events.length} events here`}
-            </p>
-            <button type="button" aria-label="Close location events" onClick={() => setDrilldown(null)}>×</button>
-          </header>
-          <p className="cluster-drilldown__place">
-            {drilldown.events.find(({ locationDisplayName }) => locationDisplayName)?.locationDisplayName
-              ?? `${drilldown.coordinates[1].toFixed(2)}, ${drilldown.coordinates[0].toFixed(2)}`}
-          </p>
-          {(() => {
-            const event = drilldown.events[drilldown.index];
-            return (
-              <>
-                <button
-                  className="cluster-drilldown__event"
-                  type="button"
-                  aria-label={`Show details for ${event.title}`}
-                  onClick={() => selectLocationEvent(0)}
-                >
-                  <b style={{ "--event-colour": event.color } as CSSProperties} />
-                  <span>
-                    <small>
-                      {event.visualLabel}
-                      {event.locationPrecision === "country_approximate" ? " · country approximate" : ""}
-                    </small>
-                    <strong>{event.title}</strong>
-                  </span>
-                </button>
-                <nav aria-label="Events at this location pagination">
-                  <button
-                    type="button"
-                    aria-label="Previous location event"
-                    onClick={() => selectLocationEvent(-1)}
-                  >
-                    ←
-                  </button>
-                  <span>{drilldown.index + 1} / {drilldown.events.length}</span>
-                  <button
-                    type="button"
-                    aria-label="Next location event"
-                    onClick={() => selectLocationEvent(1)}
-                  >
-                    →
-                  </button>
-                </nav>
-              </>
-            );
-          })()}
-        </section>
       )}
     </div>
   );

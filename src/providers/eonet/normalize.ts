@@ -3,6 +3,7 @@ import {
   parseObservation,
   type Category,
   type Evidence,
+  type EventType,
   type Geometry,
   type Observation,
 } from "../../core/model";
@@ -20,6 +21,17 @@ const CATEGORY: Record<string, Category> = {
   dustHaze: "climate-environment",
   snow: "climate-environment",
   seaLakeIce: "climate-environment",
+};
+
+const EVENT_TYPE: Record<string, EventType> = {
+  wildfires: "wildfire",
+  volcanoes: "volcano",
+  severeStorms: "storm",
+  floods: "flood",
+  earthquakes: "earthquake",
+  landslides: "landslide",
+  drought: "drought",
+  dustHaze: "pollution",
 };
 
 function record(value: unknown, field: string): JsonRecord {
@@ -92,6 +104,7 @@ export function normalizeEonetEvents(
         ? event.description
         : title,
       primaryCategory,
+      eventType: EVENT_TYPE[categoryIds[0]] ?? "unknown",
       relatedCategories: primaryCategory === "disasters" ? ["climate-environment"] : [],
       geometry: latest.geometry,
       geometryHistory: history.map(({ date, geometry }) => ({ observedAt: date, geometry })),

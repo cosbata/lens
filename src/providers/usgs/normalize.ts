@@ -76,6 +76,7 @@ export function normalizeUsgsEvent(
     title,
     description: string(properties.place, "properties.place"),
     primaryCategory: "disasters",
+    eventType: "earthquake",
     relatedCategories: [],
     geometry: { type: "Point", coordinates: [coordinates[0], coordinates[1]] },
     globalScope: false,

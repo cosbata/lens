@@ -23,6 +23,7 @@ function toEvent(observation: Observation, previous: EventCluster | null): Event
     title: observation.title,
     description: observation.description,
     primaryCategory: observation.primaryCategory,
+    eventType: observation.eventType,
     relatedCategories: observation.relatedCategories,
     geometry: observation.geometry,
     globalScope: observation.globalScope,
@@ -93,9 +94,12 @@ function scoreEvent(event: EventCluster, now: string): EventScore {
 
 export function rebuildBriefing(store: LensStore, now: string) {
   reconcileEvents(store);
+  const latestScores = new Map(
+    store.latestEventScores().map((score) => [score.eventId, score]),
+  );
   const scored = store.events().flatMap((event) => {
     if (event.phase === "resolved") return [];
-    const score = store.eventScores(event.id)[0];
+    const score = latestScores.get(event.id);
     return score ? [{ event, score }] : [];
   });
   const selected = selectBriefing(scored.map(({ event, score }) => ({

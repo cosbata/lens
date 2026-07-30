@@ -66,6 +66,7 @@ describe("cross-provider reconciliation", () => {
     expect(reconciled).toHaveLength(2);
     expect(reconciled[0].event).toMatchObject({
       title: "M 6.1 earthquake strikes Example region",
+      eventType: "unknown",
       evidenceIds: [
         "usgs:quake-1:evidence",
         "worldmonitor:quake-1:evidence",

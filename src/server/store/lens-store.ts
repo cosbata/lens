@@ -176,11 +176,12 @@ export class LensStore {
     this.database.prepare(`
       INSERT INTO observations
         (id, provider, source_family, occurred_at, fetched_at, primary_category,
-         min_lng, min_lat, max_lng, max_lat, payload)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         event_type, min_lng, min_lat, max_lng, max_lat, payload)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         fetched_at = excluded.fetched_at,
         primary_category = excluded.primary_category,
+        event_type = excluded.event_type,
         min_lng = excluded.min_lng,
         min_lat = excluded.min_lat,
         max_lng = excluded.max_lng,
@@ -193,6 +194,7 @@ export class LensStore {
       item.occurredAt,
       item.fetchedAt,
       item.primaryCategory,
+      item.eventType ?? "unknown",
       minLng,
       minLat,
       maxLng,
@@ -220,11 +222,12 @@ export class LensStore {
     const [minLng, minLat, maxLng, maxLat] = bounds(item.geometry);
     this.database.prepare(`
       INSERT INTO events
-        (id, primary_category, phase, last_seen_at, last_material_update_at,
+        (id, primary_category, event_type, phase, last_seen_at, last_material_update_at,
          min_lng, min_lat, max_lng, max_lat, payload)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         primary_category = excluded.primary_category,
+        event_type = excluded.event_type,
         phase = excluded.phase,
         last_seen_at = excluded.last_seen_at,
         last_material_update_at = excluded.last_material_update_at,
@@ -236,6 +239,7 @@ export class LensStore {
     `).run(
       item.id,
       item.primaryCategory,
+      item.eventType ?? "unknown",
       item.phase,
       item.lastSeenAt,
       item.lastMaterialUpdateAt,
@@ -314,6 +318,23 @@ export class LensStore {
       this.database.prepare(
         "SELECT payload FROM event_scores WHERE event_id = ? ORDER BY calculated_at DESC",
       ).all(eventId),
+      parseEventScore,
+    );
+  }
+
+  latestEventScores() {
+    return payloads(
+      this.database.prepare(`
+        SELECT payload FROM (
+          SELECT payload,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY event_id
+                   ORDER BY calculated_at DESC
+                 ) AS position
+          FROM event_scores
+        )
+        WHERE position = 1
+      `).all(),
       parseEventScore,
     );
   }

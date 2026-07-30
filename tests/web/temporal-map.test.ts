@@ -7,6 +7,8 @@ import {
   timelineMarkers,
   timeAtStep,
   tripPlayback,
+  tripPosition,
+  tripTrace,
 } from "../../src/web/map/temporal";
 
 describe("temporal map data", () => {
@@ -57,6 +59,18 @@ describe("temporal map data", () => {
   it("clamps playback and its moving marker to the observed route", () => {
     const trip = tripPlayback(event.geometryHistory, "2099-01-01T00:00:00Z")!;
     expect(trip.currentTime).toBe(24);
+  });
+
+  it("moves the current point and grows only the elapsed route", () => {
+    const trip = tripPlayback(event.geometryHistory, timeAtStep(endAt, 12.5))!;
+    const position = tripPosition(trip);
+    const trace = tripTrace(trip);
+
+    expect(position).not.toEqual(trip.path[0]);
+    expect(position).not.toEqual(trip.path.at(-1));
+    expect(trace).toMatchObject({ type: "LineString" });
+    expect(trace!.coordinates.at(-1)).toEqual(position);
+    expect(trace!.coordinates.length).toBeLessThan(trip.path.length);
   });
 
   it("derives exact selectable markers from attributable observations", () => {

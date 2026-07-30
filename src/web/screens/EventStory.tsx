@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { EventSidecar } from "../components/EventSidecar";
 import { TODAY_EVENTS, type TodayEvent } from "../map/briefing-fixture";
+import { comparisonHref } from "../map/temporal";
 import { WorldMap } from "../map/WorldMap";
 import "../styles/event-story.css";
 
@@ -27,8 +28,12 @@ export function EventStory({
         <a className="wordmark" href="#briefing" aria-label="Back to LENS briefing">LENS</a>
         <p>{event.title}</p>
         <nav aria-label="Story actions">
-          <a href="#compare">Compare 24h</a>
-          <a href={event.evidence[0].url} target="_blank" rel="noreferrer" aria-label="Open primary source">Source ↗</a>
+          <a href={comparisonHref(event.id)}>Compare 24h</a>
+          {event.evidence[0] && (
+            <a href={event.evidence[0].url} target="_blank" rel="noreferrer" aria-label="Open primary source">
+              Source ↗
+            </a>
+          )}
           <a href="#briefing" aria-label="Close event story">Close</a>
         </nav>
       </header>

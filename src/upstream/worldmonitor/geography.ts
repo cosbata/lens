@@ -29,12 +29,47 @@ interface Hub {
   terms: string[];
 }
 
-const REFERENCE_VERSION = "worldmonitor-d9ef780";
+const REFERENCE_VERSION = "lens-places-v2";
 const HUBS: Hub[] = [
   { name: "Bunia", country: "CD", coordinates: [30.252, 1.559], terms: ["bunia"] },
   { name: "Ituri Province", country: "CD", coordinates: [29.5, 1.85], terms: ["ituri province", "ituri"] },
   { name: "North Kivu", country: "CD", coordinates: [28.75, -0.5], terms: ["north kivu"] },
   { name: "South Kivu", country: "CD", coordinates: [28.65, -2.5], terms: ["south kivu"] },
+  {
+    name: "Bordeaux, Gironde",
+    country: "FR",
+    coordinates: [-0.5800364, 44.841225],
+    terms: [
+      "bordeaux", "gironde", "southwest france", "south-west france",
+      "southwestern france", "south-western france",
+    ],
+  },
+  { name: "Saumos", country: "FR", coordinates: [-0.9876045, 44.9203793], terms: ["saumos"] },
+  {
+    name: "Sainte-Hélène, Gironde",
+    country: "FR",
+    coordinates: [-0.8834238, 44.9664165],
+    terms: ["sainte hélène", "sainte helene", "sainte-helene"],
+  },
+  {
+    name: "Lège-Cap-Ferret",
+    country: "FR",
+    coordinates: [-1.1472098, 44.7951052],
+    terms: ["lege cap ferret", "lège cap ferret", "cap ferret"],
+  },
+  { name: "Madrid", country: "ES", coordinates: [-3.7038, 40.4168], terms: ["madrid"] },
+  {
+    name: "Cenicientos",
+    country: "ES",
+    coordinates: [-4.4669801, 40.2631894],
+    terms: ["cenicientos"],
+  },
+  {
+    name: "Las Cuevas de Cañart",
+    country: "ES",
+    coordinates: [-0.4237313, 40.7635516],
+    terms: ["cuevas de cañart", "cuevas de canart"],
+  },
   { name: "Washington, DC", country: "US", coordinates: [-77.0369, 38.9072], terms: ["washington dc", "white house", "pentagon", "capitol hill"] },
   { name: "Moscow", country: "RU", coordinates: [37.6173, 55.7558], terms: ["moscow", "kremlin"] },
   { name: "Beijing", country: "CN", coordinates: [116.4074, 39.9042], terms: ["beijing"] },
@@ -144,24 +179,32 @@ export function inferNewsLocation(text: string): NewsLocation {
       .find((candidate) => includesTerm(normalized, candidate));
     return term ? [{ hub, term }] : [];
   });
-  if (hubMatches.length === 1) {
-    const [{ hub, term }] = hubMatches;
+  const distinctHubMatches = hubMatches.filter(({ hub }, index, matches) =>
+    matches.findIndex(({ hub: candidate }) =>
+      candidate.coordinates.join(",") === hub.coordinates.join(",")) === index);
+  if (distinctHubMatches.length === 1) {
+    const [{ hub }] = distinctHubMatches;
     return {
       geometry: { type: "Point", coordinates: hub.coordinates },
       affectedCountries: hub.country ? [hub.country] : [],
       precision: "named_hub",
       displayName: hub.name,
-      matchedTerms: [term],
+      matchedTerms: hubMatches
+        .filter(({ hub: candidate }) =>
+          candidate.coordinates.join(",") === hub.coordinates.join(","))
+        .map(({ term }) => term),
       referenceVersion: REFERENCE_VERSION,
     };
   }
-  if (hubMatches.length > 1) {
+  if (distinctHubMatches.length > 1) {
     return {
       geometry: null,
-      affectedCountries: [...new Set(hubMatches.flatMap(({ hub }) => hub.country ? [hub.country] : []))],
+      affectedCountries: [...new Set(
+        distinctHubMatches.flatMap(({ hub }) => hub.country ? [hub.country] : []),
+      )],
       precision: "unmapped",
       displayName: "Multiple named locations",
-      matchedTerms: hubMatches.map(({ term }) => term),
+      matchedTerms: distinctHubMatches.map(({ term }) => term),
       referenceVersion: REFERENCE_VERSION,
     };
   }

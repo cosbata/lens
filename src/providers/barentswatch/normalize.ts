@@ -50,6 +50,7 @@ export function normalizeBarentsWatchTrack(value: unknown, fetchedAt: string, mm
     title,
     description: "Observed vessel positions from the Norwegian Coastal Administration.",
     primaryCategory: "supply-chains",
+    eventType: "shipping",
     relatedCategories: ["economy", "energy"],
     geometry: latest.geometry,
     geometryHistory: unique.map(({ observedAt, geometry }) => ({ observedAt, geometry })),

@@ -139,4 +139,17 @@ export const MIGRATIONS = [
         ON feed_state(last_checked_at DESC);
     `,
   },
+  {
+    version: 5,
+    sql: `
+      ALTER TABLE observations
+        ADD COLUMN event_type TEXT NOT NULL DEFAULT 'unknown';
+      ALTER TABLE events
+        ADD COLUMN event_type TEXT NOT NULL DEFAULT 'unknown';
+      CREATE INDEX observations_event_type_occurred
+        ON observations(event_type, occurred_at DESC);
+      CREATE INDEX events_event_type_material
+        ON events(event_type, last_material_update_at DESC);
+    `,
+  },
 ] as const;

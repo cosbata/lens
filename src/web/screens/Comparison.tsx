@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { EventChange } from "../../core/compare/snapshots";
 import { ComparisonLayer } from "../map/ComparisonLayer";
 import { EventMedia } from "../components/EventMedia";
-import { TEMPORAL_DEMO_EVENTS } from "../map/briefing-fixture";
+import { TEMPORAL_DEMO_EVENTS, type TodayEvent } from "../map/briefing-fixture";
 import {
   temporalMapState,
   timelineMarkers,
@@ -45,17 +45,43 @@ const END_AT = "2026-07-25T09:41:00Z";
 function signedScore(change: EventChange) {
   if (change.status === "added") return "New";
   if (change.status === "resolved") return "Resolved";
+  if (change.delta === null) return "Observed";
   return `${change.delta! > 0 ? "+" : "−"}${Math.abs(change.delta!).toFixed(1)}`;
 }
 
-export function Comparison() {
+function comparisonEndAt(event?: TodayEvent) {
+  const value = event?.geometryHistory?.at(-1)?.observedAt ?? event?.updatedAt;
+  return value && Number.isFinite(Date.parse(value)) ? value : END_AT;
+}
+
+function selectedEventChange(event: TodayEvent): EventChange {
+  return {
+    eventId: event.id,
+    title: event.title,
+    category: event.category.trim().toLowerCase().replaceAll(" ", "-") as EventChange["category"],
+    status: (event.geometryHistory?.length ?? 0) > 1 ? "changed" : "added",
+    beforeScore: null,
+    afterScore: event.score,
+    delta: null,
+  };
+}
+
+export function Comparison({ event }: { event?: TodayEvent }) {
+  const comparisonEvents = useMemo(
+    () => event ? [event] : TEMPORAL_DEMO_EVENTS,
+    [event],
+  );
+  const changes = useMemo(
+    () => event ? [selectedEventChange(event)] : COMPARISON_CHANGES,
+    [event],
+  );
+  const endAt = comparisonEndAt(event);
   const [step, setStep] = useState(24);
   const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState(1);
-  const [activeId, setActiveId] = useState(COMPARISON_CHANGES[0].eventId);
+  const [activeId, setActiveId] = useState(changes[0].eventId);
   const markers = useMemo(
-    () => timelineMarkers(TEMPORAL_DEMO_EVENTS, END_AT),
-    [],
+    () => timelineMarkers(comparisonEvents, endAt),
+    [comparisonEvents, endAt],
   );
   const changeStep = useCallback((next: number) => setStep(next), []);
   const changePlaying = useCallback((next: boolean) => {
@@ -83,29 +109,27 @@ export function Comparison() {
       const elapsedSeconds = (currentAt - previousAt) / 1_000;
       previousAt = currentAt;
       setStep((current) => {
-        const next = Math.min(24, current + speed * elapsedSeconds);
+        const next = Math.min(24, current + 4 * elapsedSeconds);
         if (next >= 24) setPlaying(false);
         return next;
       });
     }, 100);
     return () => window.clearInterval(timer);
-  }, [playing, speed]);
+  }, [playing]);
   const timeline = useMemo(() => ({
     time: step,
     playing,
-    speed,
     onTimeChange: changeStep,
     onPlayingChange: changePlaying,
-    onSpeedChange: setSpeed,
     markers,
     onMarkerSelect: selectMarker,
-  }), [changePlaying, changeStep, markers, playing, selectMarker, speed, step]);
+  }), [changePlaying, changeStep, markers, playing, selectMarker, step]);
   const active = useMemo(
-    () => COMPARISON_CHANGES.find(({ eventId }) => eventId === activeId) ?? COMPARISON_CHANGES[0],
-    [activeId],
+    () => changes.find(({ eventId }) => eventId === activeId) ?? changes[0],
+    [activeId, changes],
   );
-  const activeEvent = TEMPORAL_DEMO_EVENTS.find(({ id }) => id === activeId) ?? TEMPORAL_DEMO_EVENTS[0];
-  const at = timeAtStep(END_AT, step);
+  const activeEvent = comparisonEvents.find(({ id }) => id === activeId) ?? comparisonEvents[0];
+  const at = timeAtStep(endAt, step);
   const mapState = temporalMapState(activeEvent, at);
 
   return (
@@ -136,7 +160,7 @@ export function Comparison() {
             </button>
           </div>
           <ol className="change-list">
-            {COMPARISON_CHANGES.map((change, index) => (
+            {changes.map((change, index) => (
               <li key={change.eventId}>
                 <button
                   type="button"
@@ -179,7 +203,7 @@ export function Comparison() {
         </aside>
         <section className="comparison__map" aria-label="24-hour event comparison map">
           <ComparisonLayer
-            events={TEMPORAL_DEMO_EVENTS}
+            events={comparisonEvents}
             at={at}
             activeId={activeId}
             onActivate={activateEvent}

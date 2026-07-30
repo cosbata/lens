@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import { systemClock, type Clock } from "../core/fixtures";
+import type { OperationalSignals } from "../providers/pizzint/client";
 import { registerReadApi } from "./api/routes";
 import { LensStore } from "./store";
 
@@ -11,6 +12,7 @@ interface ServerOptions {
   databasePath?: string;
   now?: Clock;
   webRoot?: string;
+  operationalSignals?: () => Promise<OperationalSignals>;
 }
 
 const contentTypes: Record<string, string> = {
@@ -61,7 +63,7 @@ export function buildServer(options: ServerOptions = {}) {
       return reply.code(503).send({ service: "lens", status: "degraded", database: "unavailable" });
     }
   });
-  registerReadApi(server, store, options.now ?? systemClock);
+  registerReadApi(server, store, options.now ?? systemClock, options.operationalSignals);
   registerWebApp(server, options.webRoot ?? process.env.LENS_WEB_ROOT ?? "dist");
   if (!options.store) server.addHook("onClose", () => store.close());
 

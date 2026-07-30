@@ -14,6 +14,7 @@ describe("NASA EONET provider", () => {
     expect(result.observation).toMatchObject({
       id: "eonet:EONET_9999",
       primaryCategory: "disasters",
+      eventType: "wildfire",
       relatedCategories: ["climate-environment"],
       geometry: { type: "Point", coordinates: [-120.5, 38.5] },
       geometryHistory: [

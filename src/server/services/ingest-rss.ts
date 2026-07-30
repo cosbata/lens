@@ -6,6 +6,7 @@ import {
   parseEvidence,
   parseObservation,
 } from "../../core/model";
+import { incidentTopic } from "../../core/cluster/deterministic";
 import { calculateNewsImportance } from "../../core/score/news-importance";
 import { fetchArticleImage } from "../../providers/rss/article-image";
 import {
@@ -31,25 +32,20 @@ const IMAGE_CACHE_MS = 24 * 60 * 60_000;
 const MAX_ARTICLE_IMAGE_FETCHES = 10;
 const STORY_TOPIC_WINDOW_MS = 96 * 60 * 60_000;
 const ACTIVE_STORY_WINDOW_MS = 7 * 24 * 60 * 60_000;
-const DISEASE_TOPICS = [
-  "ebola", "marburg", "mpox", "cholera", "dengue", "measles",
-  "polio", "hantavirus", "covid",
-] as const;
-const INCIDENT_TOPICS: Array<[string, RegExp]> = [
-  ["wildfire", /\b(?:wildfires?|forest fires?|bushfires?)\b/i],
-  ["protest", /\b(?:protests?|demonstrations?|rallies|unrest)\b/i],
-  ["earthquake", /\b(?:earthquakes?|quakes?)\b/i],
-  ["flood", /\b(?:floods?|flooding)\b/i],
-  ["storm", /\b(?:storms?|hurricanes?|typhoons?|cyclones?)\b/i],
-  ["attack", /\b(?:attacks?|airstrikes?|strikes?|bombings?)\b/i],
-  ["outage", /\b(?:outages?|blackouts?|service disruptions?)\b/i],
-];
 const sha256 = async (value: string) =>
   createHash("sha256").update(value).digest("hex");
 const normalizeTitle = (value: string) =>
   normalizeStoryText(stripAttributionSuffix(value));
 const shortHash = (value: string) =>
   createHash("sha256").update(value).digest("hex").slice(0, 20);
+const articleUrl = (value: string) => {
+  const url = new URL(value);
+  url.hash = "";
+  for (const key of [...url.searchParams.keys()]) {
+    if (/^(?:utm_|at_|fbclid$|gclid$)/i.test(key)) url.searchParams.delete(key);
+  }
+  return url.toString();
+};
 
 type Loader = (
   feeds: RssFeed[],
@@ -61,13 +57,6 @@ const evidenceId = (observationId: string, source: string, link: string) =>
   `${observationId}:evidence:${shortHash(`${source}\n${link}`)}`;
 const eventId = (observationId: string) => `event:${observationId}`;
 const round = (value: number) => Math.round(value * 10) / 10;
-const diseaseTopic = (text: string) => {
-  const normalized = text.toLowerCase();
-  return DISEASE_TOPICS.find((topic) => normalized.includes(topic));
-};
-const incidentTopic = (text: string) =>
-  diseaseTopic(text)
-  ?? INCIDENT_TOPICS.find(([, pattern]) => pattern.test(text))?.[0];
 const compatibleIncidentLocation = (left: NewsLocation, right: NewsLocation) => {
   const sharedCountry = left.affectedCountries.some((country) =>
     right.affectedCountries.includes(country));
@@ -142,16 +131,20 @@ export async function ingestRss({
   const identityByItem = new Map<typeof items[number], Awaited<
     ReturnType<typeof assignStoryIdentity>
   > extends Map<unknown, infer Identity> ? Identity : never>();
+  const canonicalByUrl = new Map<string, string>();
   for (const identityItem of identityItems) {
     const item = identityItem.item;
     const identity = identities.get(identityItem);
     if (!identity) continue;
     identityByItem.set(item, identity);
-    const canonicalHash = adoptExistingCanonical(
-      identity.memberTitleHashes,
-      identity.titleHash,
-      previousAliases,
-    );
+    const url = articleUrl(item.link);
+    const canonicalHash = canonicalByUrl.get(url)
+      ?? adoptExistingCanonical(
+        identity.memberTitleHashes,
+        identity.titleHash,
+        previousAliases,
+      );
+    canonicalByUrl.set(url, canonicalHash);
     const group = groups.get(canonicalHash);
     if (group) group.push(item);
     else groups.set(canonicalHash, [item]);
@@ -229,8 +222,6 @@ export async function ingestRss({
     const existing = item.topic && item.location.affectedCountries.length > 0
       ? prepared.find((candidate) =>
         candidate.topic === item.topic
-        && candidate.representative.classification.primaryCategory
-          === item.representative.classification.primaryCategory
         && compatibleIncidentLocation(candidate.location, item.location)
         && Math.abs(Date.parse(candidate.representative.story.publishedAt) - occurredAt)
           <= STORY_TOPIC_WINDOW_MS)
@@ -308,6 +299,7 @@ export async function ingestRss({
       title: representative.title,
       description: representative.description || `${representative.source} report`,
       primaryCategory: classification.primaryCategory,
+      eventType: classification.eventType,
       relatedCategories: classification.relatedCategories,
       geometry: location.geometry,
       globalScope: false,
@@ -373,6 +365,7 @@ export async function ingestRss({
       title: observation.title,
       description: observation.description,
       primaryCategory: observation.primaryCategory,
+      eventType: observation.eventType,
       relatedCategories: observation.relatedCategories,
       geometry: observation.geometry,
       globalScope: observation.globalScope,

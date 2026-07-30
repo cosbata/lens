@@ -18,11 +18,15 @@ natural-hazard coverage useful independently.
 ## What is implemented
 
 - A map-led, responsive briefing with five-chapter event stories.
+- Three map views: editorially important events, every active mapped event,
+  and structured live observations.
 - Ten fixed public-interest categories with explicit unscored states.
 - Forty curated RSS/Atom feeds with fuzzy story identity, general incident merging, independent feed
   health, honest geography, attributable images, and `wm-lens-news-v1`
   importance scoring.
 - Direct USGS and NASA EONET activity layers plus optional authenticated WorldMonitor adapters.
+- Public PizzINT activity and GDELT bilateral-tension proxies, cached server-side
+  and explicitly separated from verified alerts.
 - Independent, non-overlapping provider schedules and per-provider degradation.
 - Canonical observations, evidence, cross-provider clustering, SQLite snapshots, and SSE updates.
 - Transparent `lens-v1` scoring, diversity-aware selection, 24-hour playback, source-derived timeline markers, and source trails.
@@ -117,11 +121,20 @@ npm run reindex
 `GET /api/v1/providers/health` exposes provider and feed failures.
 `GET /api/v1/metrics` exposes article, canonical-event, location, collision,
 selected-event, and observed-activity counts.
+`GET /api/v1/operational-signals` exposes the optional aggregate proxy signals;
+it contains no individual customer activity and is not an official threat level.
+
+The briefing map starts in **All monitored** mode so every active scored event
+with a location remains explorable. The editorial watchlist recommends up to
+24 main issues, **Important** isolates those recommendations, and **Live
+observations** isolates structured USGS and NASA EONET records. SSE refreshes
+the existing MapLibre sources without resetting the current camera; the UI
+shows both connection state and data freshness.
 
 ## How it works
 
 ```text
-WorldMonitor news/conflict · USGS · NASA EONET · optional BarentsWatch history
+RSS · USGS · NASA EONET · PizzINT/GDELT proxies · optional WorldMonitor/BarentsWatch
                   ↓
 validated observations + attributable evidence
                   ↓

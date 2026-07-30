@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { Button, SegmentedControl, Slider, Tooltip } from "@mantine/core";
+import { Button, Slider, Tooltip } from "@mantine/core";
 import { formatRelativeTime, type TimelineMarker } from "../map/temporal";
 
 const marks = [
@@ -14,20 +14,16 @@ export function PlaybackControls({
   time,
   timestamp,
   playing,
-  speed,
   onTimeChange,
   onPlayingChange,
-  onSpeedChange,
   markers,
   onMarkerSelect,
 }: {
   time: number;
   timestamp: string;
   playing: boolean;
-  speed: number;
   onTimeChange: (time: number) => void;
   onPlayingChange: (playing: boolean) => void;
-  onSpeedChange: (speed: number) => void;
   markers: readonly TimelineMarker[];
   onMarkerSelect: (marker: TimelineMarker) => void;
 }) {
@@ -74,18 +70,6 @@ export function PlaybackControls({
           ))}
         </div>
       </div>
-      <SegmentedControl
-        className="playback-controls__speed"
-        aria-label="Playback speed"
-        size="xs"
-        value={String(speed)}
-        onChange={(value) => onSpeedChange(Number(value))}
-        data={[
-          { label: "1×", value: "1" },
-          { label: "4×", value: "4" },
-          { label: "10×", value: "10" },
-        ]}
-      />
     </div>
   );
 }

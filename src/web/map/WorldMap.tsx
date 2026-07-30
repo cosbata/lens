@@ -11,12 +11,15 @@ import type {
   MapLibreMap,
   StyleSpecification,
 } from "maplibre-gl";
+import type { FeatureCollection, MultiPolygon, Polygon } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./map.css";
 import type { TodayEvent } from "./briefing-fixture";
 import {
   temporalMapState,
   tripPlayback,
+  tripPosition,
+  tripTrace,
 } from "./temporal";
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
@@ -29,23 +32,67 @@ const feature = (geometry: ReturnType<typeof temporalMapState>["geometry"]) => (
 });
 const geometryData = (
   state: ReturnType<typeof temporalMapState>,
-  showObservedPoints = true,
+  playback: ReturnType<typeof tripPlayback>,
 ) => ({
   type: "FeatureCollection" as const,
   features: [
-    ...(state.geometry.type !== "Point"
-      ? [feature(state.geometry)]
-      : []),
-    ...(showObservedPoints && state.trace?.type === "LineString"
-      ? state.trace.coordinates.map((coordinates) => feature({ type: "Point", coordinates }))
+    ...(playback
+      ? tripTrace(playback) ? [feature(tripTrace(playback)!)] : []
+      : state.geometry.type !== "Point"
+        ? [feature(state.geometry)]
+        : []),
+    ...(playback
+      ? [feature({ type: "Point", coordinates: tripPosition(playback) })]
+      : state.trace?.type === "LineString"
+        ? state.trace.coordinates.map((coordinates) => feature({ type: "Point", coordinates }))
       : []),
   ],
 });
-const emptyFeatureCollection = () => ({
-  type: "FeatureCollection" as const,
-  features: [],
-});
+export function monitoringGeometryData(
+  events: readonly TodayEvent[],
+  temporalAt: string,
+) {
+  const features = events.flatMap((event) => {
+    const state = temporalMapState(event, temporalAt);
+    const geometry = state.geometry.type === "Polygon"
+      ? state.geometry
+      : state.trace?.type === "LineString"
+        ? state.trace
+        : state.geometry.type === "LineString"
+          ? state.geometry
+          : null;
+    if (!geometry) return [];
+    const appearance = eventAppearance(event);
+    return [{
+      type: "Feature" as const,
+      properties: {
+        id: event.id,
+        title: event.title,
+        category: event.category,
+        color: appearance.color,
+      },
+      geometry,
+    }];
+  });
+  return {
+    type: "FeatureCollection" as const,
+    features,
+  };
+}
 
+export function monitoringGeometryCounts(
+  events: readonly TodayEvent[],
+  temporalAt = farFuture,
+) {
+  return monitoringGeometryData(events, temporalAt).features.reduce(
+    (counts, item) => {
+      if (item.geometry.type === "Polygon") counts.areas += 1;
+      else counts.routes += 1;
+      return counts;
+    },
+    { routes: 0, areas: 0 },
+  );
+}
 const SATELLITE_STYLE: StyleSpecification = {
   version: 8,
   sources: {
@@ -75,19 +122,49 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 const categoryKey = (category: string) => category.trim().toLowerCase().replaceAll(" ", "-");
 const MAP_TYPES = [
-  { key: "wildfire", label: "Wildfire", color: "#ff715b", pattern: /wildfire|incident complex/i },
-  { key: "storm", label: "Storm", color: "#4fa7d1", pattern: /hurricane|typhoon|storm|cyclone/i },
-  { key: "ice", label: "Ice", color: "#72c7cf", pattern: /iceberg|glacier|sea ice/i },
-  { key: "earthquake", label: "Earthquake", color: "#e0a458", pattern: /earthquake|quake/i },
-  { key: "volcano", label: "Volcano", color: "#bd6952", pattern: /volcano|eruption/i },
+  { key: "wildfire", label: "Wildfire", color: "#ff715b" },
+  { key: "storm", label: "Storm", color: "#4fa7d1" },
+  { key: "flood", label: "Flood", color: "#5ca8a8" },
+  { key: "earthquake", label: "Earthquake", color: "#e0a458" },
+  { key: "volcano", label: "Volcano", color: "#bd6952" },
 ] as const;
 const MAP_COLORS = {
   ...CATEGORY_COLORS,
   ...Object.fromEntries(MAP_TYPES.map(({ key, color }) => [key, color])),
 };
+const EVENT_CLUSTER_MAX_ZOOM = 12;
+const EVENT_HIT_LAYER_IDS = [
+  "lens-event-clusters",
+  "lens-event-points",
+  "lens-activity-clusters",
+  "lens-activity-points",
+  "lens-alert-clusters",
+  "lens-alert-points",
+];
+const MONITORING_HIT_LAYER_IDS = ["lens-monitored-routes", "lens-monitored-areas"];
+const COUNTRIES_GEOJSON_URL =
+  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson";
+const COUNTRY_CODE_OVERRIDES: Record<string, string> = {
+  Somaliland: "SO",
+};
 
-export function eventAppearance(event: Pick<TodayEvent, "category" | "title">) {
-  const subtype = MAP_TYPES.find(({ pattern }) => pattern.test(event.title));
+type CountryBoundaryCollection = FeatureCollection<
+  Polygon | MultiPolygon,
+  Record<string, unknown>
+>;
+
+let countryBoundariesPromise: Promise<CountryBoundaryCollection> | undefined;
+
+function loadCountryBoundaries() {
+  countryBoundariesPromise ??= fetch(COUNTRIES_GEOJSON_URL).then(async (response) => {
+    if (!response.ok) throw new Error(`country_boundaries_http_${response.status}`);
+    return await response.json() as CountryBoundaryCollection;
+  });
+  return countryBoundariesPromise;
+}
+
+export function eventAppearance(event: Pick<TodayEvent, "category" | "eventType">) {
+  const subtype = MAP_TYPES.find(({ key }) => key === event.eventType);
   if (subtype) return subtype;
   const key = categoryKey(event.category);
   return {
@@ -96,6 +173,113 @@ export function eventAppearance(event: Pick<TodayEvent, "category" | "title">) {
     color: CATEGORY_COLORS[key] ?? "#9c9a93",
   };
 }
+
+export function spreadCoincidentPoints(
+  points: readonly {
+    id: string;
+    coordinates: [number, number];
+    locationPrecision?: string;
+  }[],
+) {
+  const groups = new Map<string, typeof points>();
+  points.forEach((point) => {
+    const key = point.coordinates.join(",");
+    groups.set(key, [...(groups.get(key) ?? []), point]);
+  });
+  const spread = new Map<string, [number, number]>();
+  groups.forEach((group) => {
+    const sorted = [...group].sort((a, b) => a.id.localeCompare(b.id));
+    sorted.forEach((point, index) => {
+      if (index === 0) {
+        spread.set(point.id, [...point.coordinates]);
+        return;
+      }
+      const angle = index * Math.PI * (3 - Math.sqrt(5));
+      const radius = 0.012 * Math.sqrt(index);
+      const latitudeScale = Math.max(0.2, Math.cos(point.coordinates[1] * Math.PI / 180));
+      spread.set(point.id, [
+        point.coordinates[0] + Math.cos(angle) * radius / latitudeScale,
+        point.coordinates[1] + Math.sin(angle) * radius,
+      ]);
+    });
+  });
+  return spread;
+}
+
+export function countrySurfaceData(
+  boundaries: CountryBoundaryCollection,
+  events: readonly TodayEvent[],
+) {
+  const grouped = new Map<string, TodayEvent[]>();
+  events
+    .filter(({ locationPrecision }) => locationPrecision === "country_approximate")
+    .forEach((event) => event.countryCodes?.forEach((code) => {
+      grouped.set(code, [...(grouped.get(code) ?? []), event]);
+    }));
+
+  return {
+    type: "FeatureCollection" as const,
+    features: boundaries.features.flatMap((boundary) => {
+      const name = String(boundary.properties.NAME ?? boundary.properties.name ?? "");
+      const sourceCode = String(
+        boundary.properties.ISO_A2_EH
+        ?? boundary.properties["ISO3166-1-Alpha-2"]
+        ?? "",
+      );
+      const countryCode = sourceCode === "-99" ? COUNTRY_CODE_OVERRIDES[name] : sourceCode;
+      const countryEvents = countryCode ? grouped.get(countryCode) : undefined;
+      if (!countryEvents?.length) return [];
+      const categories = new Map<string, number>();
+      countryEvents.forEach((event) => {
+        const key = eventAppearance(event).key;
+        categories.set(key, (categories.get(key) ?? 0) + 1);
+      });
+      const dominantKey = [...categories]
+        .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0][0];
+      return [{
+        ...boundary,
+        properties: {
+          ...boundary.properties,
+          name,
+          countryCode,
+          eventIds: JSON.stringify(countryEvents.map(({ id }) => id)),
+          eventCount: countryEvents.length,
+          label: `${name} · ${countryEvents.length}`,
+          color: MAP_COLORS[dominantKey] ?? "#9c9a93",
+        },
+      }];
+    }),
+  };
+}
+
+export function countryLabelData(events: readonly TodayEvent[]) {
+  const grouped = new Map<string, TodayEvent[]>();
+  events
+    .filter(({ locationPrecision, countryCodes }) =>
+      locationPrecision === "country_approximate" && countryCodes?.length)
+    .forEach((event) => {
+      const code = event.countryCodes![0];
+      grouped.set(code, [...(grouped.get(code) ?? []), event]);
+    });
+  return {
+    type: "FeatureCollection" as const,
+    features: [...grouped].map(([countryCode, countryEvents]) => ({
+      type: "Feature" as const,
+      properties: {
+        countryCode,
+        name: countryEvents[0].locationDisplayName ?? countryCode,
+        eventIds: JSON.stringify(countryEvents.map(({ id }) => id)),
+        eventCount: countryEvents.length,
+        label: `${countryEvents[0].locationDisplayName ?? countryCode} · ${countryEvents.length}`,
+      },
+      geometry: {
+        type: "Point" as const,
+        coordinates: countryEvents[0].coordinates,
+      },
+    })),
+  };
+}
+
 const clusterProperties = Object.fromEntries(
   Object.keys(MAP_COLORS).map((key) => [
     key,
@@ -117,14 +301,28 @@ const eventData = (
   hiddenId?: string,
 ) => ({
   type: "FeatureCollection" as const,
-  features: events.map((event) => {
+  features: (() => {
+    const points = events
+      .filter(({ locationPrecision }) => locationPrecision !== "country_approximate")
+      .map((event) => {
+      const state = temporalMapState(event, temporalAt);
+      const coordinates = state.geometry.type === "Point"
+        ? state.geometry.coordinates
+        : state.geometry.type === "LineString"
+          ? state.geometry.coordinates.at(-1)!
+          : state.geometry.coordinates[0][0];
+      return {
+        event,
+        coordinates: coordinates as [number, number],
+      };
+    });
+    const displayCoordinates = spreadCoincidentPoints(points.map(({ event, coordinates }) => ({
+      id: event.id,
+      coordinates,
+      locationPrecision: event.locationPrecision,
+    })));
+    return points.map(({ event, coordinates }) => {
     const appearance = eventAppearance(event);
-    const state = temporalMapState(event, temporalAt);
-    const coordinates = state.geometry.type === "Point"
-      ? state.geometry.coordinates
-      : state.geometry.type === "LineString"
-        ? state.geometry.coordinates.at(-1)!
-        : state.geometry.coordinates[0][0];
     return {
       type: "Feature" as const,
       properties: {
@@ -139,9 +337,13 @@ const eventData = (
         active: event.id === activeId,
         visible: event.id !== hiddenId,
       },
-      geometry: { type: "Point" as const, coordinates },
+      geometry: {
+        type: "Point" as const,
+        coordinates: displayCoordinates.get(event.id) ?? coordinates,
+      },
     };
-  }),
+    });
+  })(),
 });
 const popupContent = (eyebrow: string, title: string) => {
   const content = document.createElement("div");
@@ -152,113 +354,92 @@ const popupContent = (eyebrow: string, title: string) => {
   content.append(label, heading);
   return content;
 };
+const uniqueEvents = (...collections: readonly (readonly TodayEvent[])[]) =>
+  [...new Map(collections.flat().map((event) => [event.id, event])).values()];
 
-export type ClusterDrilldownEvent = {
-  id: string;
-  title: string;
-  category: string;
-  visualLabel: string;
-  color: string;
-  locationPrecision: string;
-  locationDisplayName: string;
-};
-
-type ClusterLeaf = {
-  geometry?: { type?: string; coordinates?: unknown };
-  properties?: Record<string, unknown> | null;
-};
-
-const pointCoordinates = (leaf: ClusterLeaf) => (
-  leaf.geometry?.type === "Point" && Array.isArray(leaf.geometry.coordinates)
-    ? leaf.geometry.coordinates as [number, number]
-    : undefined
-);
-
-export function clusterDrilldownEvents(leaves: readonly ClusterLeaf[]): ClusterDrilldownEvent[] {
-  const coordinates = leaves.map(pointCoordinates).filter((value): value is [number, number] => Boolean(value));
-  if (coordinates.length !== leaves.length) return [];
-  if (new Set(coordinates.map((coordinate) => coordinate.join(","))).size !== 1) return [];
-  return leaves.flatMap(({ properties }) => {
-    if (typeof properties?.id !== "string") return [];
-    return [{
-      id: properties.id,
-      title: String(properties.title ?? ""),
-      category: String(properties.category ?? ""),
-      visualLabel: String(properties.visualLabel ?? properties.category ?? ""),
-      color: String(properties.color ?? "#b8a996"),
-      locationPrecision: String(properties.locationPrecision ?? ""),
-      locationDisplayName: String(properties.locationDisplayName ?? ""),
-    }];
-  });
+export async function clusterExpansionCamera(
+  source: Pick<GeoJSONSource, "getClusterExpansionZoom">,
+  clusterId: number,
+  center: [number, number],
+) {
+  return { center, zoom: await source.getClusterExpansionZoom(clusterId) };
 }
 
-const spiderData = (
-  map: MapLibreMap,
-  origin: [number, number],
-  events: readonly ClusterDrilldownEvent[],
-) => {
-  const center = map.project(origin);
-  const radius = Math.min(72, 44 + events.length * 3);
-  return {
-    type: "FeatureCollection" as const,
-    features: events.flatMap((event, index) => {
-      const angle = -Math.PI / 2 + (Math.PI * 2 * index) / events.length;
-      const coordinates = map.unproject([
-        center.x + Math.cos(angle) * radius,
-        center.y + Math.sin(angle) * radius,
-      ]).toArray() as [number, number];
-      return [
-        {
-          type: "Feature" as const,
-          properties: { kind: "leg" },
-          geometry: { type: "LineString" as const, coordinates: [origin, coordinates] },
-        },
-        {
-          type: "Feature" as const,
-          properties: { ...event, kind: "event" },
-          geometry: { type: "Point" as const, coordinates },
-        },
-      ];
-    }),
-  };
-};
+export function hasRenderedLayerAtPoint(
+  map: Pick<MapLibreMap, "queryRenderedFeatures">,
+  point: MapLayerMouseEvent["point"],
+  layers: readonly string[],
+) {
+  return map.queryRenderedFeatures(point, { layers: [...layers] }).length > 0;
+}
+
+export function MapLegend({ events }: { events: readonly TodayEvent[] }) {
+  return (
+    <div className="map-legend" aria-label="Event category colours">
+      <span>Event type</span>
+      {[...new Map(events.map((event) => {
+        const appearance = eventAppearance(event);
+        return [appearance.key, appearance];
+      })).values()].sort((a, b) => a.label.localeCompare(b.label)).map((appearance) => (
+        <i key={appearance.key}>
+          <b style={{ "--event-colour": appearance.color } as CSSProperties} />
+          {appearance.label}
+        </i>
+      ))}
+    </div>
+  );
+}
 
 export function WorldMap({
   events,
   activityEvents = [],
+  alertEvents = [],
   activeId,
   onActivate,
+  onCountryActivate,
   styleUrl,
   focus,
   temporalAt,
   showEvents = true,
   showActivity = true,
+  showAlerts = true,
+  showMonitoringGeometry = true,
   focusActive = true,
+  showLegend = true,
 }: {
   events: readonly TodayEvent[];
   activityEvents?: readonly TodayEvent[];
+  alertEvents?: readonly TodayEvent[];
   activeId: string;
   onActivate: (id: string) => void;
+  onCountryActivate?: (selection: { name: string; eventIds: string[] }) => void;
   styleUrl?: string;
   focus?: { coordinates: [number, number]; zoom: number };
   temporalAt?: string;
   showEvents?: boolean;
   showActivity?: boolean;
+  showAlerts?: boolean;
+  showMonitoringGeometry?: boolean;
   focusActive?: boolean;
+  showLegend?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const deckRef = useRef<MapboxOverlay | null>(null);
   const cameraKeyRef = useRef<string | null>(null);
-  const suppressNextFocusRef = useRef<string | null>(null);
-  const spiderOpenRef = useRef(false);
+  const activateRef = useRef(onActivate);
+  const activateCountryRef = useRef(onCountryActivate);
   const [status, setStatus] = useState<"loading" | "ready">("loading");
   const [basemap, setBasemap] = useState<"satellite" | "boundaries">("satellite");
   const mapStyle = styleUrl ?? (basemap === "boundaries" ? BOUNDARIES_STYLE : SATELLITE_STYLE);
-  const allEvents = [
-    ...events,
-    ...activityEvents.filter(({ id }) => !events.some((event) => event.id === id)),
-  ];
+  const allEvents = uniqueEvents(events, activityEvents, alertEvents);
+
+  useEffect(() => {
+    activateRef.current = onActivate;
+  }, [onActivate]);
+  useEffect(() => {
+    activateCountryRef.current = onCountryActivate;
+  }, [onCountryActivate]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -276,6 +457,56 @@ export function WorldMap({
     mapRef.current = map;
     cameraKeyRef.current = null;
     map.once("style.load", () => {
+      map.addSource("lens-country-events", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+        attribution: "Country boundaries · Natural Earth",
+      });
+      map.addSource("lens-country-event-label-points", {
+        type: "geojson",
+        data: countryLabelData(uniqueEvents(
+          showEvents ? events : [],
+          showActivity ? activityEvents : [],
+          showAlerts ? alertEvents : [],
+        )),
+      });
+      map.addLayer({
+        id: "lens-country-event-areas",
+        type: "fill",
+        source: "lens-country-events",
+        paint: {
+          "fill-color": ["get", "color"],
+          "fill-opacity": 0.2,
+        },
+      });
+      map.addLayer({
+        id: "lens-country-event-labels",
+        type: "symbol",
+        source: "lens-country-event-label-points",
+        maxzoom: 6,
+        layout: {
+          "text-field": ["get", "label"],
+          "text-size": 10,
+          "text-allow-overlap": false,
+        },
+        paint: {
+          "text-color": "#f0ede5",
+          "text-halo-color": "#111310",
+          "text-halo-width": 1.5,
+        },
+      });
+      void loadCountryBoundaries().then((boundaries) => {
+        if (mapRef.current !== map) return;
+        const source = map.getSource("lens-country-events") as GeoJSONSource | undefined;
+        source?.setData(countrySurfaceData(
+          boundaries,
+          uniqueEvents(
+            showEvents ? events : [],
+            showActivity ? activityEvents : [],
+            showAlerts ? alertEvents : [],
+          ),
+        ));
+      }).catch(() => undefined);
       map.addSource("lens-events", {
         type: "geojson",
         data: eventData(
@@ -285,7 +516,7 @@ export function WorldMap({
           initialPlayback ? initialEvent.id : undefined,
         ),
         cluster: true,
-        clusterMaxZoom: 5,
+        clusterMaxZoom: EVENT_CLUSTER_MAX_ZOOM,
         clusterRadius: 44,
         clusterProperties,
       });
@@ -305,7 +536,7 @@ export function WorldMap({
         type: "geojson",
         data: eventData(activityEvents, activeId, temporalAt ?? farFuture),
         cluster: true,
-        clusterMaxZoom: 6,
+        clusterMaxZoom: EVENT_CLUSTER_MAX_ZOOM,
         clusterRadius: 38,
         clusterProperties,
       });
@@ -343,6 +574,50 @@ export function WorldMap({
           "circle-opacity": 0.62,
           "circle-blur": 0.12,
           "circle-radius": 5,
+        },
+      });
+      map.addSource("lens-alerts", {
+        type: "geojson",
+        data: eventData(alertEvents, activeId, temporalAt ?? farFuture),
+        cluster: true,
+        clusterMaxZoom: EVENT_CLUSTER_MAX_ZOOM,
+        clusterRadius: 34,
+        clusterProperties,
+      });
+      map.addLayer({
+        id: "lens-alert-clusters",
+        type: "circle",
+        source: "lens-alerts",
+        filter: ["has", "point_count"],
+        paint: {
+          "circle-color": dominantClusterColor,
+          "circle-opacity": 0.42,
+          "circle-blur": 0.18,
+          "circle-radius": ["step", ["get", "point_count"], 12, 10, 16, 25, 20],
+        },
+      });
+      map.addLayer({
+        id: "lens-alert-cluster-count",
+        type: "symbol",
+        source: "lens-alerts",
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field": ["get", "point_count_abbreviated"],
+          "text-size": 9,
+          "text-allow-overlap": true,
+        },
+        paint: { "text-color": "#f0ede5" },
+      });
+      map.addLayer({
+        id: "lens-alert-points",
+        type: "circle",
+        source: "lens-alerts",
+        filter: ["!", ["has", "point_count"]],
+        paint: {
+          "circle-color": ["get", "color"],
+          "circle-opacity": 0.48,
+          "circle-blur": 0.16,
+          "circle-radius": 6,
         },
       });
       map.addLayer({
@@ -389,7 +664,32 @@ export function WorldMap({
       });
       map.addSource("lens-active-geometry", {
         type: "geojson",
-        data: geometryData(initialState, initialPlayback === null),
+        data: geometryData(initialState, initialPlayback),
+      });
+      map.addSource("lens-monitoring-geometry", {
+        type: "geojson",
+        data: monitoringGeometryData(allEvents, temporalAt ?? farFuture),
+      });
+      map.addLayer({
+        id: "lens-monitored-areas",
+        type: "fill",
+        source: "lens-monitoring-geometry",
+        filter: ["==", ["geometry-type"], "Polygon"],
+        paint: {
+          "fill-color": ["get", "color"],
+          "fill-opacity": 0.16,
+        },
+      });
+      map.addLayer({
+        id: "lens-monitored-routes",
+        type: "line",
+        source: "lens-monitoring-geometry",
+        filter: ["==", ["geometry-type"], "LineString"],
+        paint: {
+          "line-color": ["get", "color"],
+          "line-opacity": 0.72,
+          "line-width": 2.5,
+        },
       });
       map.addLayer({
         id: "lens-area",
@@ -403,7 +703,12 @@ export function WorldMap({
         type: "line",
         source: "lens-active-geometry",
         filter: ["==", ["geometry-type"], "LineString"],
-        paint: { "line-color": "#f0ede5", "line-width": 2, "line-dasharray": [2, 2] },
+        paint: {
+          "line-color": "#d99a2b",
+          "line-opacity": 0.72,
+          "line-width": 2,
+          "line-dasharray": [2, 2],
+        },
       });
       map.addLayer({
         id: "lens-observed-points",
@@ -411,33 +716,9 @@ export function WorldMap({
         source: "lens-active-geometry",
         filter: ["==", ["geometry-type"], "Point"],
         paint: {
-          "circle-color": "#ff9d00",
-          "circle-radius": 9,
-        },
-      });
-      map.addSource("lens-spider", {
-        type: "geojson",
-        data: emptyFeatureCollection(),
-      });
-      map.addLayer({
-        id: "lens-spider-legs",
-        type: "line",
-        source: "lens-spider",
-        filter: ["==", ["get", "kind"], "leg"],
-        paint: {
-          "line-color": "rgba(240, 237, 229, .72)",
-          "line-width": 1.25,
-        },
-      });
-      map.addLayer({
-        id: "lens-spider-points",
-        type: "circle",
-        source: "lens-spider",
-        filter: ["==", ["get", "kind"], "event"],
-        paint: {
-          "circle-color": ["get", "color"],
-          "circle-opacity": 0.94,
-          "circle-radius": 8,
+          "circle-color": "#d99a2b",
+          "circle-opacity": 0.42,
+          "circle-radius": 2.5,
         },
       });
       const overlay = new MapboxOverlay({
@@ -461,71 +742,119 @@ export function WorldMap({
         map.getCanvas().style.cursor = "";
         popup.remove();
       };
-      const clearSpider = () => {
-        spiderOpenRef.current = false;
-        (map.getSource("lens-spider") as GeoJSONSource).setData(emptyFeatureCollection());
-        map.setLayoutProperty("lens-event-labels", "visibility", showEvents ? "visible" : "none");
+      const selectCountry = (event: MapLayerMouseEvent) => {
+        if (hasRenderedLayerAtPoint(
+          map,
+          event.point,
+          [...EVENT_HIT_LAYER_IDS, ...MONITORING_HIT_LAYER_IDS],
+        )) return;
+        event.preventDefault();
+        const item = event.features?.[0];
+        const properties = item?.properties;
+        const rawIds = properties?.eventIds;
+        if (typeof rawIds !== "string") return;
+        const eventIds = JSON.parse(rawIds) as string[];
+        activateCountryRef.current?.({
+          name: String(properties?.name ?? "Country"),
+          eventIds,
+        });
       };
+      for (const layerId of ["lens-country-event-areas", "lens-country-event-labels"]) {
+        map.on("mouseenter", layerId, (event) => {
+          map.getCanvas().style.cursor = "pointer";
+          const item = event.features?.[0];
+          if (!item) return;
+          popup
+            .setLngLat(event.lngLat)
+            .setDOMContent(popupContent(
+              `${String(item.properties?.eventCount)} country-level reports`,
+              String(item.properties?.name),
+            ))
+            .addTo(map);
+        });
+        map.on("mouseleave", layerId, hidePopup);
+        map.on("click", layerId, selectCountry);
+      }
       const expandCluster = async (
         source: GeoJSONSource,
         clusterId: number,
         coordinates: [number, number],
-        locationEvents: ClusterDrilldownEvent[],
       ) => {
-        clearSpider();
-        const zoom = await source.getClusterExpansionZoom(clusterId);
-        const reveal = () => {
-          if (locationEvents.length > 1) {
-            spiderOpenRef.current = true;
-            map.setLayoutProperty("lens-event-labels", "visibility", "none");
-            (map.getSource("lens-spider") as GeoJSONSource)
-              .setData(spiderData(map, coordinates, locationEvents));
-          }
-        };
-        if (locationEvents.length > 1) map.once("moveend", reveal);
-        map.easeTo({ center: coordinates, zoom });
+        map.easeTo(await clusterExpansionCamera(source, clusterId, coordinates));
       };
       map.on("mouseenter", "lens-event-points", showEvent);
       map.on("mouseleave", "lens-event-points", hidePopup);
       map.on("click", "lens-event-points", (event) => {
-        clearSpider();
+        if (event.defaultPrevented) return;
         const id = event.features?.[0]?.properties?.id;
-        if (typeof id === "string") onActivate(id);
+        if (typeof id === "string") activateRef.current(id);
       });
+      for (const layerId of ["lens-monitored-routes", "lens-monitored-areas"]) {
+        map.on("mouseenter", layerId, (event) => {
+          map.getCanvas().style.cursor = "pointer";
+          const item = event.features?.[0];
+          if (!item) return;
+          popup
+            .setLngLat(event.lngLat)
+            .setDOMContent(popupContent(String(item.properties?.category), String(item.properties?.title)))
+            .addTo(map);
+        });
+        map.on("mouseleave", layerId, hidePopup);
+        map.on("click", layerId, (event) => {
+          if (
+            event.defaultPrevented ||
+            hasRenderedLayerAtPoint(map, event.point, EVENT_HIT_LAYER_IDS)
+          ) return;
+          event.preventDefault();
+          const id = event.features?.[0]?.properties?.id;
+          if (typeof id === "string") activateRef.current(id);
+        });
+      }
       map.on("mouseenter", "lens-activity-points", showEvent);
       map.on("mouseleave", "lens-activity-points", hidePopup);
       map.on("click", "lens-activity-points", (event) => {
-        clearSpider();
+        if (event.defaultPrevented) return;
         const id = event.features?.[0]?.properties?.id;
-        if (typeof id === "string") onActivate(id);
-      });
-      map.on("mouseenter", "lens-spider-points", showEvent);
-      map.on("mouseleave", "lens-spider-points", hidePopup);
-      map.on("click", "lens-spider-points", (event) => {
-        const id = event.features?.[0]?.properties?.id;
-        if (typeof id !== "string") return;
-        suppressNextFocusRef.current = id;
-        onActivate(id);
+        if (typeof id === "string") activateRef.current(id);
       });
       map.on("click", "lens-activity-clusters", async (event) => {
+        if (event.defaultPrevented) return;
         const item = event.features?.[0];
         if (item?.geometry.type !== "Point") return;
         const source = map.getSource("lens-activity") as GeoJSONSource;
         const clusterId = Number(item.properties?.cluster_id);
-        const pointCount = Number(item.properties?.point_count);
-        const leaves = await source.getClusterLeaves(clusterId, pointCount, 0);
-        const eventsHere = clusterDrilldownEvents(leaves);
         await expandCluster(
           source,
           clusterId,
           item.geometry.coordinates as [number, number],
-          eventsHere,
         );
       });
       map.on("mouseenter", "lens-activity-clusters", () => {
         map.getCanvas().style.cursor = "pointer";
       });
       map.on("mouseleave", "lens-activity-clusters", hidePopup);
+      map.on("mouseenter", "lens-alert-points", showEvent);
+      map.on("mouseleave", "lens-alert-points", hidePopup);
+      map.on("click", "lens-alert-points", (event) => {
+        if (event.defaultPrevented) return;
+        const id = event.features?.[0]?.properties?.id;
+        if (typeof id === "string") activateRef.current(id);
+      });
+      map.on("click", "lens-alert-clusters", async (event) => {
+        if (event.defaultPrevented) return;
+        const item = event.features?.[0];
+        if (item?.geometry.type !== "Point") return;
+        const source = map.getSource("lens-alerts") as GeoJSONSource;
+        await expandCluster(
+          source,
+          Number(item.properties?.cluster_id),
+          item.geometry.coordinates as [number, number],
+        );
+      });
+      map.on("mouseenter", "lens-alert-clusters", () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", "lens-alert-clusters", hidePopup);
       map.on("mouseenter", "lens-event-clusters", async (event) => {
         map.getCanvas().style.cursor = "pointer";
         const item = event.features?.[0];
@@ -551,32 +880,17 @@ export function WorldMap({
       });
       map.on("mouseleave", "lens-event-clusters", hidePopup);
       map.on("click", "lens-event-clusters", async (event) => {
+        if (event.defaultPrevented) return;
         hidePopup();
         const item = event.features?.[0];
         if (item?.geometry.type !== "Point") return;
         const source = map.getSource("lens-events") as GeoJSONSource;
         const clusterId = Number(item.properties?.cluster_id);
-        const pointCount = Number(item.properties?.point_count);
-        const leaves = await source.getClusterLeaves(clusterId, pointCount, 0);
-        const eventsHere = clusterDrilldownEvents(leaves);
         await expandCluster(
           source,
           clusterId,
           item.geometry.coordinates as [number, number],
-          eventsHere,
         );
-      });
-      map.on("click", (event) => {
-        const interactive = map.queryRenderedFeatures(event.point, {
-          layers: [
-            "lens-event-clusters",
-            "lens-event-points",
-            "lens-activity-clusters",
-            "lens-activity-points",
-            "lens-spider-points",
-          ],
-        });
-        if (interactive.length === 0) clearSpider();
       });
       const markReady = () => {
         if (!map.isSourceLoaded("lens-events")) return;
@@ -593,7 +907,7 @@ export function WorldMap({
       map.remove();
       mapRef.current = null;
     };
-  }, [events, activityEvents, mapStyle, onActivate]);
+  }, [mapStyle]);
 
   useEffect(() => {
     const event = allEvents.find(({ id }) => id === activeId);
@@ -603,6 +917,7 @@ export function WorldMap({
       temporalAt ?? farFuture,
     );
     const geometrySource = mapRef.current.getSource("lens-active-geometry") as GeoJSONSource | undefined;
+    const monitoringSource = mapRef.current.getSource("lens-monitoring-geometry") as GeoJSONSource | undefined;
     const playback = tripPlayback(event.geometryHistory, temporalAt ?? farFuture);
     const eventsSource = mapRef.current.getSource("lens-events") as GeoJSONSource | undefined;
     eventsSource?.setData(eventData(
@@ -613,11 +928,37 @@ export function WorldMap({
     ));
     const activitySource = mapRef.current.getSource("lens-activity") as GeoJSONSource | undefined;
     activitySource?.setData(eventData(activityEvents, activeId, temporalAt ?? farFuture));
-    geometrySource?.setData(geometryData(state, playback === null));
+    const alertsSource = mapRef.current.getSource("lens-alerts") as GeoJSONSource | undefined;
+    alertsSource?.setData(eventData(alertEvents, activeId, temporalAt ?? farFuture));
+    geometrySource?.setData(geometryData(state, playback));
+    monitoringSource?.setData(monitoringGeometryData(allEvents, temporalAt ?? farFuture));
+    void loadCountryBoundaries().then((boundaries) => {
+      if (!mapRef.current) return;
+      const source = mapRef.current.getSource("lens-country-events") as GeoJSONSource | undefined;
+      const labelSource = mapRef.current.getSource(
+        "lens-country-event-label-points",
+      ) as GeoJSONSource | undefined;
+      const visibleCountryEvents = uniqueEvents(
+        showEvents ? events : [],
+        showActivity ? activityEvents : [],
+        showAlerts ? alertEvents : [],
+      );
+      source?.setData(countrySurfaceData(
+        boundaries,
+        visibleCountryEvents,
+      ));
+      labelSource?.setData(countryLabelData(visibleCountryEvents));
+    }).catch(() => undefined);
+    for (const layerId of ["lens-monitored-routes", "lens-monitored-areas"]) {
+      if (mapRef.current.getLayer(layerId)) {
+        mapRef.current.setLayoutProperty(
+          layerId,
+          "visibility",
+          showMonitoringGeometry ? "visible" : "none",
+        );
+      }
+    }
     for (const layerId of [
-      "lens-area",
-      "lens-route",
-      "lens-observed-points",
       "lens-activity-clusters",
       "lens-activity-cluster-count",
       "lens-activity-points",
@@ -627,32 +968,26 @@ export function WorldMap({
       }
     }
     for (const layerId of [
+      "lens-alert-clusters",
+      "lens-alert-cluster-count",
+      "lens-alert-points",
+    ]) {
+      if (mapRef.current.getLayer(layerId)) {
+        mapRef.current.setLayoutProperty(layerId, "visibility", showAlerts ? "visible" : "none");
+      }
+    }
+    for (const layerId of [
       "lens-event-clusters",
       "lens-event-cluster-count",
       "lens-event-points",
       "lens-event-labels",
     ]) {
       if (mapRef.current.getLayer(layerId)) {
-        const visible = showEvents && (layerId !== "lens-event-labels" || !spiderOpenRef.current);
-        mapRef.current.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
+        mapRef.current.setLayoutProperty(layerId, "visibility", showEvents ? "visible" : "none");
       }
     }
     deckRef.current?.setProps({
-      layers: showActivity && playback ? [
-        new TripsLayer({
-          id: `lens-trip-base-${event.id}`,
-          data: [playback],
-          getPath: (trip) => trip.path,
-          getTimestamps: (trip) => trip.timestamps,
-          currentTime: playback.currentTime,
-          fadeTrail: false,
-          capRounded: true,
-          jointRounded: true,
-          widthUnits: "pixels",
-          getWidth: 2,
-          getColor: [255, 157, 0, 125],
-          pickable: false,
-        }),
+      layers: playback ? [
         new TripsLayer({
           id: `lens-trip-head-${event.id}`,
           data: [playback],
@@ -672,11 +1007,6 @@ export function WorldMap({
     });
 
     const cameraKey = `${activeId}:${focus?.coordinates.join(",") ?? ""}:${focus?.zoom ?? ""}`;
-    if (suppressNextFocusRef.current === activeId) {
-      cameraKeyRef.current = cameraKey;
-      suppressNextFocusRef.current = null;
-      return;
-    }
     if (focusActive && status === "ready" && cameraKeyRef.current !== cameraKey) {
       const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 900;
       const complete = temporalMapState(event, farFuture);
@@ -706,10 +1036,13 @@ export function WorldMap({
     activeId,
     events,
     activityEvents,
+    alertEvents,
     focus,
     focusActive,
     showActivity,
+    showAlerts,
     showEvents,
+    showMonitoringGeometry,
     status,
     temporalAt,
   ]);
@@ -719,8 +1052,9 @@ export function WorldMap({
       className="world-map"
       data-basemap={basemap}
       data-camera-mode={focusActive ? "event" : "world"}
-      data-event-count={events.length}
+      data-event-count={allEvents.length}
       data-events-visible={showEvents}
+      data-alerts-visible={showAlerts}
       data-trip-renderer={status === "ready" ? "deck-gl" : undefined}
     >
       <div ref={containerRef} className="world-map__canvas" />
@@ -742,19 +1076,7 @@ export function WorldMap({
           </button>
         </div>
       )}
-      <div className="map-legend" aria-label="Event category colours">
-        <span>Event type</span>
-        {[...new Map(allEvents.map((event) => {
-          const appearance = eventAppearance(event);
-          return [appearance.key, appearance];
-        })).values()].sort((a, b) => a.label.localeCompare(b.label)).map((appearance) => (
-          <i key={appearance.key}>
-            <b style={{ "--event-colour": appearance.color } as CSSProperties} />
-            {appearance.label}
-          </i>
-        ))}
-        <small>Clusters show nearby event totals. Hover to preview; select to expand.</small>
-      </div>
+      {showLegend && <MapLegend events={allEvents} />}
       {status !== "ready" && (
         <p className="map-status" role="status">
           Loading world map…

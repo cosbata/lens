@@ -23,7 +23,7 @@
     "evaluate": "tsx scripts/evaluate.ts",
     "license:check": "tsx scripts/check-licenses.ts",
     "docs:check": "tsx scripts/check-docs.ts",
-    "test": "vitest run --exclude tests/e2e/**",
+    "test": "vitest run --exclude tests/e2e/** --exclude '.gjc/**'",
     "test:e2e": "playwright test",
     "verify:e2e": "npm run build && npm run test:e2e",
     "verify:docs": "npm run docs:check && npm run replay -- --fixture tests/fixtures/replay/baseline.json",

@@ -4,6 +4,7 @@ coverage/
 test-results/
 playwright-report/
 .gjc/
+.omx/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal

@@ -1,4 +1,5 @@
 import type { TodayEvent } from "../map/briefing-fixture";
+import { comparisonHref } from "../map/temporal";
 import { EventMedia } from "./EventMedia";
 
 type MonitorProps = {
@@ -124,7 +125,7 @@ export function MonitorPanel({ events, active, onSelect }: MonitorProps) {
           </details>
         ) : null}
         <div className="monitor-detail__actions">
-          <a href="#compare">Watch 24h movement</a>
+          <a href={comparisonHref(active.id)}>Watch 24h movement</a>
           <a href={`#event/${active.id}`}>Open full briefing</a>
         </div>
         <footer><span>{active.source}</span></footer>

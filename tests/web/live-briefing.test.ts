@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   briefingToActivityEvents,
+  briefingToMonitoredEvents,
   briefingToPrimaryEvent,
   briefingToTodayEvents,
   watchBriefing,
@@ -18,6 +19,7 @@ const response: BriefingResponse = {
         description: "A new material event.",
         primaryCategory: "disasters",
         geometry: { type: "Point", coordinates: [10, 20] },
+        affectedCountries: ["KR"],
         geometryHistory: [
           { observedAt: "2026-07-25T11:00:00Z", geometry: { type: "Point", coordinates: [9, 19] } },
           { observedAt: "2026-07-25T12:00:00Z", geometry: { type: "Point", coordinates: [10, 20] } },
@@ -50,6 +52,12 @@ it("maps structured activity independently from the editorial watchlist", () => 
   expect(briefingToActivityEvents(activity).map(({ id }) => id)).toEqual(["live-event"]);
 });
 
+it("maps all monitored events independently from the editorial watchlist", () => {
+  const monitored = structuredClone(response);
+  monitored.data.monitored = monitored.data.events;
+  expect(briefingToMonitoredEvents(monitored).map(({ id }) => id)).toEqual(["live-event"]);
+});
+
 describe("live briefing client", () => {
   it("turns a canonical API event into a complete navigable story", () => {
     const [event] = briefingToTodayEvents(response, TODAY_EVENTS);
@@ -62,13 +70,24 @@ describe("live briefing client", () => {
       sourceCount: 1,
       locationPrecision: "named_hub",
       locationDisplayName: "Example region",
+      countryCodes: ["KR"],
       scoreVersion: "wm-lens-news-v1",
     });
     expect(event.scoreReasons).toContain("distinct_sources.2.40");
     expect(event.geometryHistory).toHaveLength(2);
     expect(event.storyChapters).toHaveLength(5);
+    expect(event.whatChanged).toContain("2 timestamped geometry observations");
+    expect(event.affected).toContain("Mapped area: Example region");
+    expect(event.storyChapters[2].body).toBe(event.whatChanged);
     expect(event.evidence[0]).toMatchObject({ kind: "official" });
     expect(event.media).toBeUndefined();
+  });
+
+  it("states when no earlier verified revision exists", () => {
+    const withoutHistory = structuredClone(response);
+    delete withoutHistory.data.events[0].event.geometryHistory;
+    expect(briefingToTodayEvents(withoutHistory, TODAY_EVENTS)[0].whatChanged)
+      .toBe("No earlier verified revision is available yet.");
   });
 
   it("uses an attributable source image before location imagery", () => {

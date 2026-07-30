@@ -53,6 +53,43 @@ describe("RSS ingestion", () => {
     store.close();
   });
 
+  it("treats tracking variants of one article URL as one story", async () => {
+    const store = new LensStore();
+    const feeds = RSS_FEEDS.slice(0, 2);
+    await ingestRss({
+      store,
+      feeds,
+      now: () => new Date("2026-07-26T09:00:00Z"),
+      load: async () => feeds.map((feed, index) => ({
+        feed,
+        status: "success" as const,
+        items: [{
+          source: index === 0 ? "Guardian World" : "Guardian Environment",
+          sourceId: `wildfire-${index}`,
+          authority: "established" as const,
+          title: index === 0
+            ? "Firefighters battle a wildfire near Bordeaux"
+            : "Bordeaux wildfire response continues",
+          link: `https://example.test/wildfire?utm_source=${index}`,
+          publishedAt: "2026-07-26T08:00:00Z",
+          description: "Emergency crews are working in Gironde.",
+          categoryHint: "climate-environment" as const,
+          language: "en",
+        }],
+      })),
+      loadImage: async () => undefined,
+    });
+
+    expect(store.events().filter(({ phase }) => phase === "active")).toHaveLength(1);
+    expect(store.observations()).toHaveLength(1);
+    expect(store.evidenceForObservation(store.observations()[0].id)).toHaveLength(2);
+    expect(store.events()[0].geometry).toEqual({
+      type: "Point",
+      coordinates: [-0.5800364, 44.841225],
+    });
+    store.close();
+  });
+
   it("merges same-outbreak reports and keeps the most precise supported place", async () => {
     const store = new LensStore();
     const feeds = RSS_FEEDS.slice(0, 2);

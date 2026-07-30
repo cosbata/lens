@@ -12,6 +12,62 @@ export const CATEGORIES = [
 ] as const;
 
 export type Category = (typeof CATEGORIES)[number];
+export const EVENT_TYPES = [
+  "unknown",
+  "airstrike",
+  "ground-clash",
+  "missile-drone",
+  "ceasefire",
+  "displacement",
+  "election",
+  "sanction",
+  "treaty",
+  "diplomatic-dispute",
+  "policy-change",
+  "cyberattack",
+  "terrorism",
+  "civil-unrest",
+  "crime",
+  "public-safety",
+  "earthquake",
+  "wildfire",
+  "flood",
+  "storm",
+  "volcano",
+  "landslide",
+  "drought",
+  "heat",
+  "pollution",
+  "ecosystem",
+  "climate-policy",
+  "inflation",
+  "rates",
+  "employment",
+  "trade",
+  "market-shock",
+  "oil-gas",
+  "electricity",
+  "nuclear",
+  "renewable",
+  "fuel-shortage",
+  "shipping",
+  "port",
+  "aviation",
+  "rail-road",
+  "manufacturing",
+  "food",
+  "outbreak",
+  "public-health-alert",
+  "healthcare-disruption",
+  "medicine-shortage",
+  "outage",
+  "telecom",
+  "datacenter",
+  "satellite",
+  "critical-infrastructure",
+] as const;
+
+export type EventType = (typeof EVENT_TYPES)[number];
 export type ProviderState = "success" | "degraded" | "failed";
 export type EventPhase = "emerging" | "active" | "recovering" | "resolved";
 export type Position = [longitude: number, latitude: number];
@@ -58,6 +114,7 @@ export interface Observation {
   title: string;
   description: string;
   primaryCategory: Category;
+  eventType?: EventType;
   relatedCategories: Category[];
   geometry: Geometry | null;
   geometryHistory?: TimedGeometry[];
@@ -72,6 +129,7 @@ export interface EventCluster {
   title: string;
   description: string;
   primaryCategory: Category;
+  eventType?: EventType;
   relatedCategories: Category[];
   geometry: Geometry | null;
   geometryHistory?: TimedGeometry[];
@@ -131,6 +189,7 @@ export class ModelValidationError extends Error {
 }
 
 const categorySet = new Set<string>(CATEGORIES);
+const eventTypeSet = new Set<string>(EVENT_TYPES);
 const providerStates = new Set<ProviderState>(["success", "degraded", "failed"]);
 const phases = new Set<EventPhase>(["emerging", "active", "recovering", "resolved"]);
 
@@ -184,6 +243,14 @@ function category(value: unknown, field: string): Category {
 function categoryList(value: unknown, field: string): Category[] {
   if (!Array.isArray(value)) throw new ModelValidationError("invalid_category", field);
   return value.map((item, index) => category(item, `${field}.${index}`));
+}
+
+function eventType(value: unknown): EventType {
+  if (value === undefined) return "unknown";
+  if (typeof value !== "string" || !eventTypeSet.has(value)) {
+    throw new ModelValidationError("invalid_record", "eventType");
+  }
+  return value as EventType;
 }
 
 function score(value: unknown, field: string): number {
@@ -336,6 +403,7 @@ export function parseObservation(value: unknown): Observation {
     title: text(input.title, "title"),
     description: text(input.description, "description"),
     primaryCategory: category(input.primaryCategory, "primaryCategory"),
+    eventType: eventType(input.eventType),
     relatedCategories: categoryList(input.relatedCategories, "relatedCategories"),
     ...location(input),
     ...(geometryHistory ? { geometryHistory } : {}),
@@ -353,6 +421,7 @@ export function parseEventCluster(value: unknown): EventCluster {
     title: text(input.title, "title"),
     description: text(input.description, "description"),
     primaryCategory: category(input.primaryCategory, "primaryCategory"),
+    eventType: eventType(input.eventType),
     relatedCategories: categoryList(input.relatedCategories, "relatedCategories"),
     ...location(input),
     ...(geometryHistory ? { geometryHistory } : {}),

@@ -23,7 +23,7 @@ const observation: Observation = {
   id: "observation-1", provider: "usgs", providerSourceId: "usgs-1",
   sourceFamily: "usgs", url: "https://example.com/event", occurredAt: now,
   fetchedAt: now, title: "Earthquake", description: "Magnitude 6.1 earthquake",
-  primaryCategory: "disasters", relatedCategories: [], ...location,
+  primaryCategory: "disasters", eventType: "earthquake", relatedCategories: [], ...location,
   affectedCountries: ["KR"], measurements: { magnitude: 6.1 }, extension: {},
 };
 const evidence: Evidence = {
@@ -33,7 +33,8 @@ const evidence: Evidence = {
 };
 const event: EventCluster = {
   id: "event-1", title: observation.title, description: observation.description,
-  primaryCategory: observation.primaryCategory, relatedCategories: [], ...location,
+  primaryCategory: observation.primaryCategory, eventType: "earthquake",
+  relatedCategories: [], ...location,
   affectedCountries: ["KR"], firstSeenAt: now, lastSeenAt: now,
   lastMaterialUpdateAt: now, phase: "active", measurements: { magnitude: 6.1 },
   evidenceIds: [evidence.id], sourceFamilies: ["usgs"],
@@ -73,6 +74,7 @@ describe("SQLite canonical store", () => {
     expect(store.evidence(evidence.id)).toEqual(evidence);
     expect(store.event(event.id)).toEqual(event);
     expect(store.eventScores(event.id)).toEqual([score]);
+    expect(store.latestEventScores()).toEqual([score]);
     expect(store.snapshot(snapshot.id)).toEqual(snapshot);
     store.close();
   });
@@ -92,7 +94,26 @@ describe("SQLite canonical store", () => {
     database.close();
 
     const store = new LensStore(path);
-    expect(store.migrationVersions()).toEqual([1, 2, 3, 4]);
+    expect(store.migrationVersions()).toEqual([1, 2, 3, 4, 5]);
+    expect(store.database.prepare(
+      "SELECT event_type FROM observations LIMIT 1",
+    ).get()).toBeUndefined();
+    store.close();
+  });
+
+  it("defaults legacy payloads to an unknown event type", () => {
+    const store = new LensStore();
+    store.saveObservation({ ...observation, eventType: undefined });
+    store.saveEvent({ ...event, eventType: undefined });
+
+    expect(store.observation(observation.id)?.eventType).toBe("unknown");
+    expect(store.event(event.id)?.eventType).toBe("unknown");
+    expect(store.database.prepare(
+      "SELECT event_type FROM observations WHERE id = ?",
+    ).get(observation.id)).toEqual({ event_type: "unknown" });
+    expect(store.database.prepare(
+      "SELECT event_type FROM events WHERE id = ?",
+    ).get(event.id)).toEqual({ event_type: "unknown" });
     store.close();
   });
 

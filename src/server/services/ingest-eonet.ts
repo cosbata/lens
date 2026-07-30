@@ -13,6 +13,7 @@ function toEvent(observation: Observation, previous: EventCluster | null): Event
     title: observation.title,
     description: observation.description,
     primaryCategory: observation.primaryCategory,
+    eventType: observation.eventType,
     relatedCategories: observation.relatedCategories,
     geometry: observation.geometry,
     globalScope: observation.globalScope,

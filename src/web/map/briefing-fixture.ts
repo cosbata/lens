@@ -21,6 +21,7 @@ export type StoryChapter = {
 export type TodayEvent = {
   id: string;
   category: string;
+  eventType?: string;
   chapter: string;
   title: string;
   summary: string;
@@ -47,6 +48,7 @@ export type TodayEvent = {
   sourceCount?: number;
   locationPrecision?: string;
   locationDisplayName?: string;
+  countryCodes?: readonly string[];
   selectionReason: string;
   evidence: readonly EvidenceRecord[];
   storyChapters: readonly StoryChapter[];

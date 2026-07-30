@@ -52,6 +52,8 @@ test("monitor filters events, updates detail, and controls map layers", async ({
   const feed = page.getByRole("list", { name: "Current event feed" });
   await expect(feed.getByRole("button")).toHaveCount(3);
 
+  await page.getByRole("checkbox", { name: "Security" }).uncheck();
+  await expect(feed.getByRole("button")).toHaveCount(2);
   await page.getByRole("searchbox", { name: "Search current events" }).fill("central bank");
   await expect(feed.getByRole("button")).toHaveCount(1);
   await feed.getByRole("button").click();
@@ -60,9 +62,9 @@ test("monitor filters events, updates detail, and controls map layers", async ({
     .toBeVisible();
   await expect(page.getByRole("article", { name: "Active world event" })).toHaveCount(0);
 
-  await page.getByRole("checkbox", { name: "Selected events" }).uncheck();
-  await expect(page.locator(".world-map")).toHaveAttribute("data-events-visible", "false");
-  await page.getByRole("checkbox", { name: "Selected events" }).check();
+  await page.getByRole("radio", { name: "Live observations" }).check();
+  await expect(page.locator(".world-map--empty")).toHaveCount(1);
+  await page.getByRole("radio", { name: "Important" }).check();
   await expect(page.locator(".world-map")).toHaveAttribute("data-events-visible", "true");
 
   await page.getByRole("button", { name: "Borders" }).click();
@@ -94,7 +96,7 @@ test("full stack loads SQLite data and applies an SSE briefing update", async ({
   }
 });
 
-test("watchlist renders fifty stored events on the map", async ({ page }) => {
+test("main issues stay concise while all monitored events remain on the map", async ({ page }) => {
   const api = await startFullStackTestServer({ watchlistCount: 50 });
   try {
     await page.route("**/api/**", (route) => {
@@ -102,11 +104,11 @@ test("watchlist renders fifty stored events on the map", async ({ page }) => {
       return route.continue({ url: `${api.baseUrl}${requestUrl.pathname}${requestUrl.search}` });
     });
     await page.goto("/#briefing");
-    await expect(page.getByText("50 attributable events are visible across the curated world watchlist."))
+    await expect(page.getByText("50 monitored events are visible. 24 are recommended."))
       .toBeVisible();
     await page.getByRole("button", { name: /World watchlist/ }).click();
     await expect(page.getByRole("list", { name: "Current event feed" })
-      .getByRole("button")).toHaveCount(50);
+      .getByRole("button")).toHaveCount(24);
     await expect(page.locator(".world-map")).toHaveAttribute("data-event-count", "50");
     await expect(page.locator(".world-map")).toHaveAttribute("data-camera-mode", "world");
     await page.getByRole("list", { name: "Current event feed" }).getByRole("button").nth(10).click();

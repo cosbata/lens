@@ -151,7 +151,7 @@
   bottom: 1.5rem;
   left: 1.5rem;
   display: grid;
-  grid-template-columns: 5.5rem auto minmax(12rem, 1fr) auto;
+  grid-template-columns: 5.5rem auto minmax(12rem, 1fr);
   align-items: center;
   gap: 1rem;
   min-height: 4.25rem;
@@ -258,20 +258,6 @@
   font-size: .48rem;
 }
 
-.playback-controls__speed {
-  --sc-color: #d99a2b;
-  background: rgb(240 237 229 / 8%);
-}
-
-.playback-controls__speed .mantine-SegmentedControl-label {
-  color: #f0ede5;
-  font-size: .56rem;
-}
-
-.playback-controls__speed .mantine-SegmentedControl-label[data-active] {
-  color: #161813;
-}
-
 @media (max-width: 850px) {
   .comparison__layout { height: auto; grid-template-columns: 1fr; }
   .comparison-panel { overflow: visible; }
@@ -281,7 +267,7 @@
     right: .75rem;
     bottom: .75rem;
     left: .75rem;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto 1fr;
     gap: .5rem;
   }
   .playback-controls__status { display: none; }

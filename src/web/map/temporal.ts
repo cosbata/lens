@@ -3,6 +3,10 @@ import type { TodayEvent } from "./briefing-fixture";
 
 export const TIMELINE_HOURS = 24;
 
+export function comparisonHref(eventId?: string) {
+  return eventId ? `#compare/${encodeURIComponent(eventId)}` : "#compare";
+}
+
 export type TimelineMarker = {
   id: string;
   eventId: string;
@@ -115,6 +119,36 @@ export function tripPlayback(
     timestamps,
     currentTime,
   };
+}
+
+export function tripPosition(
+  trip: NonNullable<ReturnType<typeof tripPlayback>>,
+): Position {
+  const next = trip.timestamps.findIndex((timestamp) => timestamp >= trip.currentTime);
+  if (next <= 0) return trip.path[Math.max(0, next)];
+  if (next === -1) return trip.path.at(-1)!;
+  const previous = next - 1;
+  const duration = trip.timestamps[next] - trip.timestamps[previous];
+  const progress = duration === 0
+    ? 1
+    : (trip.currentTime - trip.timestamps[previous]) / duration;
+  return trip.path[previous].map((coordinate, axis) =>
+    coordinate + (trip.path[next][axis] - coordinate) * progress,
+  ) as Position;
+}
+
+export function tripTrace(
+  trip: NonNullable<ReturnType<typeof tripPlayback>>,
+): Geometry | null {
+  const next = trip.timestamps.findIndex((timestamp) => timestamp > trip.currentTime);
+  const coordinates = trip.path.slice(0, next === -1 ? undefined : next);
+  const current = tripPosition(trip);
+  if (coordinates.at(-1)?.some((coordinate, axis) => coordinate !== current[axis])) {
+    coordinates.push(current);
+  }
+  return coordinates.length >= 2
+    ? { type: "LineString", coordinates }
+    : null;
 }
 
 export function temporalMapState(event: TodayEvent, at: string): TemporalMapState {

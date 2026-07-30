@@ -11,6 +11,20 @@ describe("honest news geography", () => {
       });
   });
 
+  it("maps current wildfire subregions to real supported coordinates", () => {
+    expect(inferNewsLocation("Firefighters battle a wildfire near Bordeaux"))
+      .toMatchObject({
+        precision: "named_hub",
+        displayName: "Bordeaux, Gironde",
+        geometry: { type: "Point", coordinates: [-0.5800364, 44.841225] },
+      });
+    expect(inferNewsLocation("Wildfires spread through Cenicientos near Madrid"))
+      .toMatchObject({
+        precision: "unmapped",
+        displayName: "Multiple named locations",
+      });
+  });
+
   it("labels a country-center fallback as approximate", () => {
     const location = inferNewsLocation("National election begins across Australia");
     expect(location).toMatchObject({
@@ -61,7 +75,7 @@ describe("honest news geography", () => {
         affectedCountries: [],
         precision: "unmapped",
         matchedTerms: [],
-        referenceVersion: "worldmonitor-d9ef780",
+        referenceVersion: "lens-places-v2",
     });
   });
 

@@ -7,6 +7,7 @@ import {
   type Observation,
 } from "../../core/model";
 import { inferNewsLocation } from "../../upstream/worldmonitor/geography";
+import { classifyNews } from "../../upstream/worldmonitor/classifier";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -115,6 +116,7 @@ export function normalizeWorldMonitorIranEvents(
     const publishedAt = time(event.timestamp, `events.${index}.timestamp`);
     const title = text(event.title, `events.${index}.title`);
     const locationName = text(event.locationName, `events.${index}.locationName`);
+    const classification = classifyNews(`${title} ${locationName}`, primaryCategory);
     const observation = parseObservation({
       id: `worldmonitor:iran:${id}`,
       provider: "worldmonitor",
@@ -126,6 +128,7 @@ export function normalizeWorldMonitorIranEvents(
       title,
       description: `${locationName} · ${upstreamCategory}`,
       primaryCategory,
+      eventType: classification.eventType,
       relatedCategories: primaryCategory === "conflict" ? ["security"] : [],
       geometry: {
         type: "Point",
@@ -197,6 +200,7 @@ export function normalizeWorldMonitorFeedDigest(
         const primaryCategory = newsCategory(bucketName, optionalText(threat.category, "threat.category"));
         const locationName = optionalText(item.locationName, "locationName");
         const snippet = optionalText(item.snippet, "snippet");
+        const classification = classifyNews(`${title} ${snippet ?? ""}`, primaryCategory);
         const inferredLocation = hasLocation
           ? null
           : inferNewsLocation(`${title} ${snippet ?? ""} ${locationName ?? ""}`);
@@ -218,6 +222,7 @@ export function normalizeWorldMonitorFeedDigest(
           title,
           description: snippet ?? [locationName, source].filter(Boolean).join(" · "),
           primaryCategory,
+          eventType: classification.eventType,
           relatedCategories:
             primaryCategory === "conflict" ? ["security"] :
             primaryCategory === "supply-chains" ? ["economy"] :

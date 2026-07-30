@@ -60,4 +60,33 @@ describe("deterministic clustering", () => {
       },
     )).toMatchObject({ merge: true, reason: "merge.canonical_url" });
   });
+
+  it("merges RSS reports about one named-place incident within four days", () => {
+    expect(decideMerge(
+      {
+        ...base,
+        id: "rss:bordeaux-1",
+        provider: "rss",
+        providerSourceId: "bordeaux-1",
+        title: "Firefighters battle a wildfire near Bordeaux",
+        eventType: "climate-environment",
+        entities: ["FR"],
+        locationKey: "-1:45",
+        locationPrecision: "named_hub",
+        occurredAt: "2026-07-24T08:00:00Z",
+      },
+      {
+        ...base,
+        id: "rss:bordeaux-2",
+        provider: "rss",
+        providerSourceId: "bordeaux-2",
+        title: "Evacuations continue as forest fires spread in Gironde",
+        eventType: "conflict",
+        entities: ["FR"],
+        locationKey: "-1:45",
+        locationPrecision: "named_hub",
+        occurredAt: "2026-07-27T08:00:00Z",
+      },
+    )).toMatchObject({ merge: true, reason: "merge.named_incident" });
+  });
 });

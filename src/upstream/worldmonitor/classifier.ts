@@ -4,12 +4,13 @@
  * d9ef780be65caf6669d352dade30fd2d777048eb.
  * Copyright (C) 2024-2026 Elie Habib. SPDX-License-Identifier: AGPL-3.0-only
  */
-import { CATEGORIES, type Category } from "../../core/model";
+import { CATEGORIES, type Category, type EventType } from "../../core/model";
 
 export type ThreatLevel = "critical" | "high" | "medium" | "low" | "info";
 
 export interface NewsClassification {
   primaryCategory: Category;
+  eventType: EventType;
   relatedCategories: Category[];
   level: ThreatLevel;
   confidence: number;
@@ -80,6 +81,51 @@ const LEVEL_KEYWORDS: Array<[ThreatLevel, string[]]> = [
   ]],
 ];
 
+const EVENT_TYPE_KEYWORDS: Array<[EventType, string[]]> = [
+  ["airstrike", ["airstrike", "air strike"]],
+  ["missile-drone", ["drone strike", "missile strike"]],
+  ["ceasefire", ["ceasefire"]],
+  ["displacement", ["displaced", "displacement", "flee their homes"]],
+  ["election", ["election", "referendum"]],
+  ["sanction", ["sanction", "sanctions"]],
+  ["treaty", ["treaty"]],
+  ["cyberattack", ["cyber attack", "ransomware", "data breach"]],
+  ["terrorism", ["terror attack", "terrorist"]],
+  ["civil-unrest", ["civil unrest", "protest", "riots"]],
+  ["earthquake", ["earthquake", "quake"]],
+  ["wildfire", ["wildfire", "forest fire"]],
+  ["flood", ["flood", "flooding"]],
+  ["storm", ["hurricane", "typhoon", "cyclone", "tropical storm"]],
+  ["volcano", ["volcano", "volcanic eruption"]],
+  ["landslide", ["landslide"]],
+  ["drought", ["drought"]],
+  ["heat", ["heatwave", "heat wave"]],
+  ["pollution", ["oil spill", "pollution"]],
+  ["rates", ["interest rate", "rate cut", "rate hike"]],
+  ["inflation", ["inflation"]],
+  ["employment", ["unemployment", "job losses"]],
+  ["market-shock", ["market crash", "market selloff"]],
+  ["oil-gas", ["oil field", "oil refinery", "natural gas", "lng"]],
+  ["electricity", ["electricity grid", "power grid"]],
+  ["nuclear", ["nuclear power", "nuclear plant", "reactor"]],
+  ["fuel-shortage", ["fuel shortage"]],
+  ["port", ["port closure", "port disruption"]],
+  ["shipping", ["shipping route", "vessel", "freight"]],
+  ["aviation", ["airport closure", "flight disruption"]],
+  ["rail-road", ["rail disruption", "road closure"]],
+  ["manufacturing", ["factory shutdown", "manufacturing disruption"]],
+  ["food", ["food shortage", "grain shortage"]],
+  ["outbreak", ["disease outbreak", "epidemic", "pandemic"]],
+  ["public-health-alert", ["health emergency", "public health alert"]],
+  ["healthcare-disruption", ["hospital disruption", "healthcare disruption"]],
+  ["medicine-shortage", ["medicine shortage", "drug shortage"]],
+  ["outage", ["cloud outage", "internet outage", "major outage", "service down"]],
+  ["telecom", ["telecom outage", "mobile network outage"]],
+  ["datacenter", ["data center outage", "datacenter outage"]],
+  ["satellite", ["satellite outage", "satellite failure"]],
+  ["critical-infrastructure", ["critical infrastructure"]],
+];
+
 function includesTerm(text: string, term: string) {
   const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?:$|[^\\p{L}\\p{N}])`, "u")
@@ -114,8 +160,11 @@ export function classifyNews(
     .map(([category]) => category);
   const level = LEVEL_KEYWORDS.find(([, keywords]) =>
     keywords.some((keyword) => includesTerm(normalized, keyword)))?.[0] ?? "info";
+  const eventType = EVENT_TYPE_KEYWORDS.find(([, keywords]) =>
+    keywords.some((keyword) => includesTerm(normalized, keyword)))?.[0] ?? "unknown";
   return {
     primaryCategory,
+    eventType,
     relatedCategories,
     level,
     confidence: matchedKeywords.length === 0

@@ -17,6 +17,8 @@ describe("comparison screen", () => {
     expect(html).toContain("Visual interpolation · No forecasts");
     expect(html).toContain("Observed timeline events");
     expect(html).toContain("observed 21:41 UTC");
+    expect(html).not.toContain("Playback speed");
+    expect(html).not.toContain("10×");
     expect(html).toContain('class="event-media event-media--light change-detail__media"');
     expect(html).toContain("<img");
     for (const change of COMPARISON_CHANGES) {

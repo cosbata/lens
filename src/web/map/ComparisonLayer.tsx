@@ -18,10 +18,8 @@ export function ComparisonLayer({
   timeline: {
     time: number;
     playing: boolean;
-    speed: number;
     onTimeChange: (time: number) => void;
     onPlayingChange: (playing: boolean) => void;
-    onSpeedChange: (speed: number) => void;
     markers: readonly TimelineMarker[];
     onMarkerSelect: (marker: TimelineMarker) => void;
   };
@@ -47,10 +45,8 @@ export function ComparisonLayer({
         time={timeline.time}
         timestamp={at.slice(11, 16)}
         playing={timeline.playing}
-        speed={timeline.speed}
         onTimeChange={timeline.onTimeChange}
         onPlayingChange={timeline.onPlayingChange}
-        onSpeedChange={timeline.onSpeedChange}
         markers={timeline.markers}
         onMarkerSelect={timeline.onMarkerSelect}
       />

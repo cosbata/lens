@@ -21,10 +21,11 @@ function clusterRecord(observation: Observation): ClusterObservation {
     provider: observation.provider,
     providerSourceId: observation.providerSourceId,
     canonicalUrl: observation.url,
-    title: observation.title,
+    title: `${observation.title} ${observation.description}`,
     eventType: observation.primaryCategory,
     entities: observation.affectedCountries,
     locationKey: locationKey(observation),
+    locationPrecision: String(observation.measurements.locationPrecision ?? ""),
     occurredAt: observation.occurredAt,
   };
 }
@@ -44,7 +45,11 @@ export function groupCanonicalObservations(observations: Observation[]) {
 const eventIdForObservation = (observation: Observation) =>
   observation.provider === "rss" ? `event:${observation.id}` : observation.id;
 
-function mergedEvent(store: LensStore, observations: Observation[]): EventCluster {
+function mergedEvent(
+  store: LensStore,
+  observations: Observation[],
+  existingEvents: readonly EventCluster[],
+): EventCluster {
   const sorted = [...observations].sort(
     (left, right) => left.occurredAt.localeCompare(right.occurredAt) || left.id.localeCompare(right.id),
   );
@@ -53,7 +58,7 @@ function mergedEvent(store: LensStore, observations: Observation[]): EventCluste
     store.evidenceForObservation(observation.id)
   );
   const evidenceIds = evidence.map(({ id }) => id);
-  const related = store.events().filter((event) =>
+  const related = existingEvents.filter((event) =>
     event.evidenceIds.some((id) => evidenceIds.includes(id)));
   const previous = related.find(({ id }) => id === eventIdForObservation(preferred))
     ?? related.sort((left, right) => left.id.localeCompare(right.id))[0];
@@ -62,6 +67,9 @@ function mergedEvent(store: LensStore, observations: Observation[]): EventCluste
     title: preferred.title,
     description: preferred.description,
     primaryCategory: preferred.primaryCategory,
+    eventType: preferred.eventType === "unknown"
+      ? sorted.find(({ eventType }) => eventType && eventType !== "unknown")?.eventType ?? "unknown"
+      : preferred.eventType,
     relatedCategories: [...new Set(sorted.flatMap(({ relatedCategories }) => relatedCategories))],
     geometry: preferred.geometry,
     geometryHistory: preferred.geometryHistory,
@@ -88,17 +96,19 @@ function mergedEvent(store: LensStore, observations: Observation[]): EventCluste
 }
 
 export function reconcileEvents(store: LensStore) {
+  const existingEvents = store.events();
   return groupCanonicalObservations(store.observations()).map(({ observations, mergeReasons }) => {
-    const event = mergedEvent(store, observations);
+    const event = mergedEvent(store, observations, existingEvents);
     store.saveEvent(event);
     const observationIds = new Set(observations.map(eventIdForObservation));
-    for (const duplicate of store.events()) {
+    for (const duplicate of existingEvents) {
       if (
         duplicate.id !== event.id
         && duplicate.phase === "active"
         && observationIds.has(duplicate.id)
       ) {
         store.saveEvent({ ...duplicate, phase: "resolved", lastSeenAt: event.lastSeenAt });
+        duplicate.phase = "resolved";
       }
     }
     return { event, observationIds: observations.map(({ id }) => id), mergeReasons };

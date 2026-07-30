@@ -64,17 +64,29 @@
 .map-legend {
   position: absolute;
   z-index: 2;
-  bottom: 13.75rem;
-  left: 20rem;
+  bottom: 17rem;
+  left: 21.75rem;
   display: grid;
-  grid-template-columns: repeat(2, auto);
-  gap: .45rem 1rem;
-  max-width: 22rem;
-  padding: .8rem 1rem;
-  border: 1px solid rgb(240 237 229 / 18%);
-  background: rgb(8 9 8 / 88%);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .28rem .55rem;
+  width: 14rem;
+  padding: .5rem .65rem;
+  border: 1px solid rgb(240 237 229 / 12%);
+  background: rgb(8 9 8 / 66%);
   color: var(--paper);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(7px);
+}
+.monitor-stack > .map-legend {
+  position: static;
+  width: auto;
+  padding: .2rem .15rem 0;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+.today-overview--selected .map-legend,
+.today-overview--list-open .map-legend {
+  bottom: 1.25rem;
 }
 .map-legend > span,
 .map-legend > small {
@@ -82,29 +94,22 @@
 }
 .map-legend > span {
   color: var(--muted);
-  font-size: .5rem;
+  font-size: .43rem;
   letter-spacing: .12em;
   text-transform: uppercase;
 }
 .map-legend i {
   display: flex;
   align-items: center;
-  gap: .4rem;
-  font: 500 .56rem var(--sans);
+  gap: .3rem;
+  font: 500 .46rem var(--sans);
   font-style: normal;
 }
 .map-legend b {
-  width: .45rem;
-  height: .45rem;
+  width: .34rem;
+  height: .34rem;
   border-radius: 50%;
   background: var(--event-colour);
-}
-.map-legend small {
-  padding-top: .35rem;
-  border-top: 1px solid rgb(240 237 229 / 14%);
-  color: var(--muted);
-  font-size: .5rem;
-  line-height: 1.4;
 }
 .maplibregl-popup-content {
   min-width: 9rem;
@@ -155,39 +160,53 @@
 }
 .monitor-dock,
 .monitor-panel {
-  position: absolute;
-  z-index: 2;
-  top: 6.25rem;
   border: 1px solid rgb(240 237 229 / 18%);
   background: rgb(8 9 8 / 90%);
   color: var(--paper);
   backdrop-filter: blur(12px);
 }
-.monitor-dock {
+.monitor-stack {
+  position: absolute;
+  z-index: 2;
+  top: 4.35rem;
   left: 1.25rem;
-  width: 18rem;
-  max-height: calc(100svh - 21rem);
+  width: min(20rem, calc(100vw - 2.5rem));
+  display: grid;
+  gap: .45rem;
+}
+.monitor-dock {
+  width: 100%;
+  max-height: calc(100svh - 22.25rem);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.monitor-panel {
+  position: absolute;
+  z-index: 2;
+  top: 5rem;
 }
 .today-overview--selected .monitor-dock,
 .today-overview--selected .monitor-panel {
   max-height: calc(100svh - 7.5rem);
 }
+.today-overview--selected .monitor-dock { bottom: auto; }
 .today-overview--list-open .monitor-dock {
+  bottom: 1.25rem;
   height: calc(100svh - 7.5rem);
   max-height: none;
 }
 .monitor-controls {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: .75rem;
+  gap: .55rem;
   flex: none;
-  padding: .8rem 1rem;
+  padding: .65rem .8rem;
   border-bottom: 1px solid rgb(240 237 229 / 18%);
 }
 .monitor-controls > header,
+.monitor-controls > section,
 .monitor-controls > fieldset,
 .monitor-controls > a { grid-column: 1 / -1; }
 .monitor-controls header,
@@ -197,7 +216,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding-bottom: .75rem;
+  padding-bottom: .55rem;
   border-bottom: 1px solid rgb(240 237 229 / 18%);
 }
 .monitor-controls header p,
@@ -209,20 +228,49 @@
   letter-spacing: .14em;
   text-transform: uppercase;
 }
+.monitor-controls header small {
+  display: block;
+  margin-top: .25rem;
+  color: var(--muted);
+  font-size: .5rem;
+}
 .monitor-controls header strong,
 .monitor-watchlist header strong,
 .monitor-panel header strong {
   font-size: .68rem;
   font-weight: 500;
 }
+.monitor-signals {
+  display: grid;
+  gap: .35rem;
+  padding: .5rem 0;
+  border-bottom: 1px solid rgb(240 237 229 / 18%);
+}
+.monitor-signals > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .75rem;
+}
+.monitor-signals span,
+.monitor-signals small {
+  color: var(--muted);
+  font-size: .5rem;
+}
+.monitor-signals strong {
+  font-size: .58rem;
+  font-weight: 500;
+  text-align: right;
+}
+.monitor-signals small { line-height: 1.35; }
 .monitor-search,
-.monitor-category {
+.monitor-categories {
   display: block;
   min-width: 0;
   margin-top: 0;
 }
 .monitor-search span,
-.monitor-category span,
+.monitor-categories legend,
 .monitor-layers legend {
   display: block;
   margin-bottom: .4rem;
@@ -231,10 +279,9 @@
   letter-spacing: .1em;
   text-transform: uppercase;
 }
-.monitor-search input,
-.monitor-category select {
+.monitor-search input {
   width: 100%;
-  min-height: 2.2rem;
+  min-height: 2rem;
   padding: 0 .7rem;
   border: 1px solid rgb(240 237 229 / 24%);
   border-radius: 0;
@@ -243,15 +290,56 @@
   font: inherit;
   font-size: .68rem;
 }
-.monitor-layers {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: .6rem;
+.monitor-categories {
+  position: relative;
   margin: 0;
-  padding: .7rem 0;
+  padding: .55rem 0;
   border: 0;
   border-block: 1px solid rgb(240 237 229 / 18%);
 }
+.monitor-categories__select-all {
+  position: absolute;
+  top: .55rem;
+  right: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--paper);
+  font: inherit;
+  font-size: .55rem;
+  text-decoration: underline;
+  text-underline-offset: .2rem;
+  cursor: pointer;
+}
+.monitor-categories__options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .3rem .65rem;
+}
+.monitor-categories__options label {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: .45rem;
+  color: var(--paper);
+  font-size: .6rem;
+  cursor: pointer;
+}
+.monitor-categories__options span {
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+.monitor-categories input { accent-color: var(--accent); }
+.monitor-layers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .45rem;
+  margin: 0;
+  padding: .55rem 0;
+  border: 0;
+  border-block: 1px solid rgb(240 237 229 / 18%);
+}
+.monitor-modes { grid-template-columns: repeat(3, 1fr); }
 .monitor-layers legend { grid-column: 1 / -1; }
 .monitor-layers label {
   display: flex;
@@ -268,9 +356,10 @@
 .monitor-watchlist {
   min-height: 0;
   display: flex;
-  flex: 1;
+  flex: none;
   flex-direction: column;
 }
+.today-overview--list-open .monitor-watchlist { flex: 1; }
 .monitor-panel {
   right: 1.25rem;
   width: min(22rem, calc(100vw - 2.5rem));
@@ -542,12 +631,13 @@
     right: .75rem;
   }
   .overview-copy { display: none; }
-  .monitor-dock {
+  .monitor-stack {
     top: 5.5rem;
     right: .75rem;
     left: .75rem;
     width: auto;
-    bottom: auto;
+  }
+  .monitor-dock {
     max-height: 21rem;
   }
   .monitor-watchlist { max-height: 7rem; }

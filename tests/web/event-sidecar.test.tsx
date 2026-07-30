@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { EventStory } from "../../src/web/screens/EventStory";
 import { eventStoryHref } from "../../src/web/screens/TodayOverview";
 import { TODAY_EVENTS } from "../../src/web/map/briefing-fixture";
+import { comparisonHref } from "../../src/web/map/temporal";
 
 describe("event story sidecar", () => {
   it("renders every story claim and evidence link from the fixture", () => {
@@ -53,5 +54,6 @@ describe("event story sidecar", () => {
     expect(html).toContain('aria-current="page"');
     expect(html).toContain(`aria-label="Previous event: ${TODAY_EVENTS[0].title}"`);
     expect(html).toContain(`aria-label="Next event: ${TODAY_EVENTS[2].title}"`);
+    expect(html).toContain(`href="${comparisonHref(event.id)}"`);
   });
 });

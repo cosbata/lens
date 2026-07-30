@@ -6,11 +6,13 @@ type ApiEvent = {
     title: string;
     description: string;
     primaryCategory: string;
+    eventType?: string;
     geometry: { type: string; coordinates: unknown } | null;
     geometryHistory?: Array<{
       observedAt: string;
       geometry: { type: string; coordinates: unknown };
     }>;
+    affectedCountries?: string[];
     lastMaterialUpdateAt: string;
     sourceFamilies: string[];
     measurements?: Record<string, string | number | boolean | null>;
@@ -29,7 +31,24 @@ type ApiEvent = {
 
 export type BriefingResponse = {
   meta: { state: "empty" | "fresh" | "stale" | "degraded"; dataTime: string | null };
-  data: { events: ApiEvent[]; watchlist?: ApiEvent[]; activity?: ApiEvent[] };
+  data: {
+    events: ApiEvent[];
+    watchlist?: ApiEvent[];
+    monitored?: ApiEvent[];
+    activity?: ApiEvent[];
+  };
+};
+
+export type OperationalLayersResponse = {
+  data: {
+    alerts: Array<ApiEvent & {
+      kind: "reported-alert";
+      observedAt: string;
+      expiresAt: string;
+      precision: string;
+      evidenceClass: string;
+    }>;
+  };
 };
 
 type LiveEventSource = {
@@ -92,6 +111,35 @@ function reasonLabel(value: string) {
   return `${labels[kind] ?? kind.replaceAll("_", " ")}${detail ? `: ${detail.replaceAll("_", " ")}` : ""}`;
 }
 
+const impactByCategory: Record<string, string> = {
+  conflict: "Watch for verified changes to civilian safety, access, and regional security.",
+  "politics-diplomacy": "Watch for a confirmed policy, legal, or cross-border consequence.",
+  security: "Watch for verified effects on public safety and critical services.",
+  disasters: "Watch for official impact measurements, service disruption, and response updates.",
+  "climate-environment": "Watch for measured changes to exposure, air, water, land, or ecosystems.",
+  economy: "Watch for confirmed changes to prices, employment, trade, or financial conditions.",
+  energy: "Watch for measured supply, generation, price, or infrastructure changes.",
+  "supply-chains": "Watch for confirmed route, port, freight, or production disruption.",
+  health: "Watch for official case, capacity, treatment, or public-health guidance.",
+  "technology-infrastructure": "Watch for confirmed service scope, restoration, and downstream disruption.",
+};
+
+function evidenceSummary(detail: ApiEvent, locationDisplayName: string) {
+  const sourceCount = new Set(detail.event.sourceFamilies).size;
+  return `Mapped area: ${locationDisplayName}. ${sourceCount} source ${sourceCount === 1 ? "family is" : "families are"} attached to this event.`;
+}
+
+function verifiedChange(detail: ApiEvent) {
+  const positions = detail.event.geometryHistory?.length ?? 0;
+  if (positions > 1) {
+    return `The provider supplies ${positions} timestamped geometry observations for comparison.`;
+  }
+  if (detail.evidence.length > 1) {
+    return `${detail.evidence.length} evidence records are available; no earlier geometry revision is attached.`;
+  }
+  return "No earlier verified revision is available yet.";
+}
+
 function apiEventsToTodayEvents(
   details: readonly ApiEvent[],
   fallback: readonly TodayEvent[],
@@ -105,6 +153,7 @@ function apiEventsToTodayEvents(
       return {
         ...existing,
         title: detail.event.title,
+        eventType: detail.event.eventType ?? "unknown",
         summary: detail.event.description,
         source: detail.event.sourceFamilies.join(" · "),
         updatedAt: detail.event.lastMaterialUpdateAt,
@@ -112,6 +161,7 @@ function apiEventsToTodayEvents(
         coordinates,
         geometry: detail.event.geometry as TodayEvent["geometry"],
         geometryHistory: history,
+        countryCodes: detail.event.affectedCountries ?? [],
         timelineSource: "live",
         media: media(detail),
       };
@@ -122,20 +172,26 @@ function apiEventsToTodayEvents(
     const sourceCount = detail.event.sourceFamilies.length;
     const locationPrecision = String(detail.event.measurements?.locationPrecision ?? "provider_exact");
     const locationDisplayName = String(detail.event.measurements?.locationDisplayName ?? "Source-provided location");
+    const whatChanged = verifiedChange(detail);
+    const affected = evidenceSummary(detail, locationDisplayName);
+    const whyItMatters = impactByCategory[detail.event.primaryCategory]
+      ?? "Watch for a confirmed material effect in subsequent source updates.";
     return {
       id: detail.event.id,
       category: detail.event.primaryCategory.replaceAll("-", " "),
+      eventType: detail.event.eventType ?? "unknown",
       chapter: "Live update",
       title: detail.event.title,
       summary: body,
-      whyItMatters: "This event passed the current confidence, importance, and diversity gates.",
-      whatChanged: "A source revision materially changed the current assessment.",
-      affected: "Affected people, services, and connected systems shown by the available evidence.",
+      whyItMatters,
+      whatChanged,
+      affected,
       source: detail.event.sourceFamilies.join(" · "),
       updatedAt: detail.event.lastMaterialUpdateAt,
       coordinates,
       geometry: detail.event.geometry as TodayEvent["geometry"],
       geometryHistory: history,
+      countryCodes: detail.event.affectedCountries ?? [],
       timelineSource: "live",
       media: media(detail),
       score: score?.finalScore ?? 0,
@@ -157,17 +213,18 @@ function apiEventsToTodayEvents(
         url: item.url,
       })),
       storyChapters: [
-        ["overview", "What happened", "A material event entered today’s briefing."],
-        ["spread", "Where it is spreading", "The mapped location anchors the confirmed impact."],
-        ["change", "What changed", "The latest source revision changed the assessment."],
-        ["impact", "Why it matters", "Its score passed the public briefing threshold."],
-        ["watch", "What to watch next", "New official evidence will update this story in place."],
-      ].map(([id, eyebrow, title]) => ({
+        ["overview", "What happened", detail.event.title, body],
+        ["spread", "What is mapped", locationDisplayName, affected],
+        ["change", "What changed", "Available comparison evidence", whatChanged],
+        ["impact", "Why it matters", "The next confirmed consequence", whyItMatters],
+        ["watch", "What to watch next", "Wait for a material source update",
+          "A newer timestamp, changed measurement, or additional independent evidence will update this event."],
+      ].map(([id, eyebrow, title, chapterBody]) => ({
         id: id as "overview" | "spread" | "change" | "impact" | "watch",
         eyebrow,
         title,
-        body,
-        mapNote: "Latest attributable source location.",
+        body: chapterBody,
+        mapNote: `Location precision: ${locationPrecision.replaceAll("_", " ")}.`,
         coordinates,
         zoom: 4.8,
       })),
@@ -194,6 +251,25 @@ export function briefingToPrimaryEvent(
 
 export function briefingToActivityEvents(briefing: BriefingResponse) {
   return apiEventsToTodayEvents(briefing.data.activity ?? [], []);
+}
+
+export function briefingToMonitoredEvents(briefing: BriefingResponse) {
+  return apiEventsToTodayEvents(briefing.data.monitored ?? [], []);
+}
+
+export function operationalLayersToAlertEvents(layers: OperationalLayersResponse) {
+  const alerts = new Map(layers.data.alerts.map((alert) => [alert.event.id, alert]));
+  return apiEventsToTodayEvents(layers.data.alerts, []).map((event) => ({
+    ...event,
+    chapter: "Reported alert",
+    selectionReason: `${
+      alerts.get(event.id)?.evidenceClass === "official-or-provider"
+        ? "Official or provider report"
+        : "Media report"
+    } · Location precision: ${
+      event.locationPrecision?.replaceAll("_", " ") ?? "unknown"
+    }.`,
+  }));
 }
 
 export function watchBriefing({

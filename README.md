@@ -48,7 +48,9 @@ The command prints one deterministic briefing snapshot as JSON. It does not call
 
 ## Run the web experience
 
-In two terminals:
+### Development mode
+
+Run these in two terminals:
 
 ```sh
 npm run dev:server
@@ -58,7 +60,23 @@ npm run dev:server
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173>. The API defaults to <http://127.0.0.1:8787> and writes `lens.sqlite`. If a provider is unavailable, the last valid briefing remains readable and its health becomes degraded.
+Open <http://127.0.0.1:5173>. Vite serves the web UI there and proxies `/api` requests to the service at <http://127.0.0.1:8787>.
+
+### Single-service mode
+
+This is the same shape used by Railway: one process serves both the built web
+UI and the API.
+
+```sh
+npm run build
+npm start
+```
+
+Open <http://127.0.0.1:8787>. Locally, the service writes `lens.sqlite` in the
+working directory. On Railway, it writes `lens.sqlite` to
+`RAILWAY_VOLUME_MOUNT_PATH` unless `LENS_DB_PATH` is explicitly set. If a
+provider is unavailable, the last valid briefing remains readable and its
+health becomes degraded.
 
 `.env.example` lists the complete runtime surface. The service reads process
 environment variables directly, so export them in your shell or configure them
@@ -73,7 +91,7 @@ Core environment variables:
 | `LENS_DB_PATH` | `lens.sqlite` | SQLite database path |
 | `RSS_POLL_MS` | `600000` | Self-hosted curated-news schedule |
 | `USGS_POLL_MS` | `300000` | USGS schedule |
-| `WORLDMONITOR_POLL_MS` | `600000` | WorldMonitor schedule |
+| `WORLDMONITOR_POLL_MS` | `600000` | WorldMonitor schedule, only when `WORLDMONITOR_API_KEY` is set |
 | `EONET_POLL_MS` | `900000` | NASA EONET schedule |
 | `WORLDMONITOR_BASE_URL` | `https://api.worldmonitor.app` | WorldMonitor-compatible API origin |
 | `WORLDMONITOR_API_KEY` | unset | Server-only `wm_...` key for live WorldMonitor API access |
